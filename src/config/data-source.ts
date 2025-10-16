@@ -4,10 +4,10 @@ import { Cliente  } from '../entities/Cliente';
 import { Rol } from '../entities/Rol';
 import { Otp } from '../entities/Otp';
 import { TipoOtp } from '../entities/TipoOtp';
-
 import {ParametroSistema } from '../entities/ParametrosSistema'
-
 import { ClienteNoRegistrado } from '../entities/ClienteNoRegistrado';
+import { ActionType } from '../entities/action_types';
+import { AuditLog } from '../entities/audit_logs';
 
 
 //cadeana local
@@ -53,6 +53,8 @@ export const AppDataSource = new DataSource({
     TipoOtp,
     ParametroSistema,
     ClienteNoRegistrado,
+    ActionType,
+    AuditLog
   ],
   synchronize: true, // ¡PRECAUCIÓN! Ideal para desarrollo, puede borrar datos en producción.
   logging: false,    // Poner en 'true' para depurar consultas SQL.

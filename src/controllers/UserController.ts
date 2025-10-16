@@ -18,6 +18,8 @@ export class UserController {
   static async crear(req: Request, res: Response) {
     try {
       const { nombre, correo, contrasena, id_rol, numero_telefono, numero_identificacion } = req.body;
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
 
       if (!contrasena || contrasena.length < 8) {
         return res.status(400).json({ mensaje: "La contraseña es demasiado corta o no fue proporcionada (mínimo 8 caracteres)." });
@@ -33,13 +35,18 @@ export class UserController {
       }
 
       const nuevoUsuario = await crearUsuario({
-        nombre,
-        correo,
-        contrasena,
-        id_rol,
-        numero_telefono,
-        numero_identificacion,
-      });
+          nombre,
+          correo,
+          contrasena,
+          id_rol,
+          numero_telefono,
+          numero_identificacion,
+        },
+        ipAddress,
+        userAgent
+      );
+
+      
 
       const usuarioParaRespuesta: Partial<Usuario> = { ...nuevoUsuario };
       delete (usuarioParaRespuesta as any).contrasena;
@@ -70,9 +77,11 @@ export class UserController {
   static async LoginPorMail(req: Request, res: Response) {
     try {
       const { email, password } = req.body; // Controller extracts data from the request
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
 
       // Controller calls the service function, passing the extracted data
-      const usuario = await obtenerLoginPorMail(email, password);
+      const usuario = await obtenerLoginPorMail(email, password,ipAddress,userAgent);
 
       if (usuario) {
         // Controller processes the result from the service and sends an HTTP response
