@@ -1,2 +1,2 @@
-# EtikosJeffSvBack
-Back para prueba de especilista en desarrollo de sofware cuenca 
+# backenControlGastos
+app de control financiera barberia 2025 -n
