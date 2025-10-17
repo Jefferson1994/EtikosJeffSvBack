@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { crearUsuario, obtenerLoginPorMail, obtenerRolesActivos, obtenerUsuarioPorIdentificacion,obtenerNegociosPorUsuario } from '../services/UserService'; // Importa tus funciones de servicio
+import { crearUsuario, obtenerLoginPorMail, obtenerRolesActivos, obtenerUsuarioPorIdentificacion, validarOtpVerificacionCuenta,validarOtpLogin2FA,cambiarContrasena } from '../services/UserService'; // Importa tus funciones de servicio
 import { AppDataSource } from '../config/data-source'; // Asegúrate de importar AppDataSource
 import { Usuario } from '../entities/Usuario'; // Asegúrate de importar la entidad Usuario
 
@@ -85,10 +85,18 @@ export class UserController {
 
       if (usuario) {
         // Controller processes the result from the service and sends an HTTP response
-        res.status(200).json({ message: 'Inicio de sesión exitoso', 
-          user: usuario.user, // <--- Accede al objeto de usuario
-          token: usuario.token 
-      });
+        if (usuario.twoFactorRequired) {
+          return res.status(200).json({
+            twoFactorRequired: true,
+            message: usuario.message
+          });
+        }
+        return res.status(200).json({
+          message: 'Inicio de sesión exitoso',
+          user: usuario.user,
+          token: usuario.token,
+          twoFactorRequired: usuario.twoFactorRequired
+        });
       } else {
         res.status(401).json({ message: 'Credenciales inválidas' });
       }
@@ -118,20 +126,111 @@ export class UserController {
     }
   }
 
-  /* a futuro poder administar roles desde sistena
-  static async crearRol(req: Request, res: Response) {
+  //verificar cuenta
+  static async verificarCuenta(req: Request, res: Response) {
     try {
-      const { nombre, descripcion, activo } = req.body;
-      // Llama a un servicio para crear el rol
-      // const nuevoRol = await RolService.crearRol({ nombre, descripcion, activo });
-      // res.status(201).json(nuevoRol);
-      res.status(501).json({ mensaje: "Crear rol aún no implementado." });
+      const { correo, codigoOtp } = req.body;
+      if (!correo || !codigoOtp) {
+        return res.status(400).json({ message: 'Se requiere el correo y el código OTP.' });
+      }
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      const resultado = await validarOtpVerificacionCuenta(correo, codigoOtp, ipAddress, userAgent);
+
+      // 5. Procesa el resultado del servicio y envía la respuesta HTTP
+      if (resultado.success) {
+        // Si la validación fue exitosa
+        return res.status(200).json({
+          success: true,
+          message: resultado.message
+        });
+      } else {
+        // Si la validación falló (código incorrecto, expirado, etc.)
+        return res.status(400).json({
+          success: false,
+          message: resultado.message
+        });
+      }
     } catch (error: unknown) {
-      console.error("Error al crear rol:", (error as Error).message);
-      res.status(500).json({ mensaje: "Error al crear rol.", error: (error as Error).message });
+      // Manejo de errores inesperados
+      console.error("Error en el controlador de verificación de cuenta:", error);
+      return res.status(500).json({ message: "Error interno del servidor." });
     }
-  }*/
-  
+  }
+
+  //otp doble autenticacion
+  static async verificarLogin2FA(req: Request, res: Response) {
+    try {
+      // 1. Extrae los datos del cuerpo de la petición (el JSON de Postman)
+      const { correo, codigoOtp } = req.body;
+
+      // 2. Valida que los datos necesarios estén presentes
+      if (!correo || !codigoOtp) {
+        return res.status(400).json({ message: 'Se requiere el correo y el código OTP.' });
+      }
+
+      // 3. Captura la metadata de seguridad, igual que en tu login
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      // 4. Llama a tu servicio de validación
+      const resultado = await validarOtpLogin2FA(correo, codigoOtp, ipAddress, userAgent);
+
+      // 5. Procesa el resultado del servicio
+      if (resultado) {
+        // Éxito: El OTP fue correcto. Devolvemos el usuario y el token.
+        return res.status(200).json({
+          message: 'Verificación de dos pasos exitosa.',
+          ...resultado // Esto incluye user, token y twoFactorRequired: false
+        });
+      } else {
+        // Fallo: El OTP fue inválido, expiró, etc.
+        // Usamos 401 Unauthorized porque es un fallo de autenticación.
+        return res.status(401).json({ message: 'El código de verificación es inválido o ha expirado.' });
+      }
+    } catch (error: unknown) {
+      // Manejo de errores inesperados (ej. la base de datos se cae)
+      console.error("Error en el controlador de verificación 2FA:", error);
+      return res.status(500).json({ message: "Error interno del servidor." });
+    }
+  }
+
+  // cambiar contraseña
+  static async cambiarContrasena(req: CustomRequest, res: Response) {
+  try {
+    // 1. Verifica que el usuario esté autenticado (el middleware ya lo hizo).
+    if (!req.user) {
+      return res.status(401).json({ mensaje: "Usuario no autenticado." });
+    }
+    
+    // 2. Extrae los datos necesarios.
+    const idUsuario = req.user.id;
+    const { contrasenaActual, nuevaContrasena } = req.body;
+    const ipAddress = req.ip || null;
+    const userAgent = req.headers['user-agent'] || null;
+
+    // 3. Valida que los datos del body estén presentes.
+    if (!contrasenaActual || !nuevaContrasena) {
+      return res.status(400).json({ mensaje: "Se requiere la contraseña actual y la nueva contraseña." });
+    }
+
+    // 4. Llama al servicio con los datos recolectados.
+    const resultado = await cambiarContrasena(idUsuario, contrasenaActual, nuevaContrasena, ipAddress, userAgent);
+
+    // 5. Devuelve una respuesta exitosa.
+    return res.status(200).json(resultado);
+
+  } catch (error: unknown) {
+    const message = (error as Error).message;
+    // Si el error es por contraseña incorrecta, devolvemos un 401 (No autorizado).
+    // Para otros errores, devolvemos un 500 (Error del servidor).
+    const statusCode = message.includes('incorrecta') ? 401 : 500;
+    console.error("Error en UserController.cambiarContrasena:", message);
+    return res.status(statusCode).json({ mensaje: message });
+  }
+}
+
  static async obtenerPorCedula(req: CustomRequest, res: Response) {
     try {
       if (!req.user) { // CORREGIDO: Acceso a req.user para verificar autenticación

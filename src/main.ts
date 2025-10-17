@@ -24,7 +24,7 @@ AppDataSource.initialize()
     console.log("Base de datos conectada");
     await AppDataSource.runMigrations(); 
 
-    app.use("/api", userRoutes);
+    app.use("/user", userRoutes);
     app.use('/api/ciudadanos', cedulaLimiter, ciudadanoRoutes);
 
     app.listen(3000, () => {

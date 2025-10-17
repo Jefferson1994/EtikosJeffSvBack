@@ -41,6 +41,12 @@ export class Usuario {
   @Column({ type: 'tinyint', default: 1, nullable: false })
   activo!: number;
 
+  @Column({ type: 'tinyint', default: 0, nullable: false })
+  esta_verificado!: number;
+
+  @Column({ type: 'tinyint', default: 0, nullable: false })
+  autenticacion_dos_pasos_activa!: number;
+
   // --- Relaciones ---
   // Relación OneToOne con la entidad Cliente (¡la nueva!)
   @OneToOne(() => Cliente, (cliente) => cliente.usuario)

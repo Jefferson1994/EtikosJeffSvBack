@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  BeforeInsert,
 } from 'typeorm';
 import { Usuario } from './Usuario'; // Importar la entidad Usuario
 import { TipoOtp } from './TipoOtp'; // ¡Importar la nueva entidad TipoOtp!
@@ -27,11 +28,21 @@ export class Otp {
   @Column({ type: 'datetime2', nullable: false })
   expira_en!: Date; // Fecha y hora en que expira el OTP
 
+
+
   @Column({ type: 'bit', default: false, nullable: false })
   usado!: boolean; // Indica si el OTP ya fue utilizado (0 = no, 1 = sí)
 
-  @CreateDateColumn({ type: 'datetime2', default: () => 'GETDATE()' })
-  creado_en!: Date;
+  //@CreateDateColumn({ type: 'datetime2', default: () => 'GETDATE()' })
+  //creado_en!: Date;
+
+  @Column({ type: 'datetime' })
+    creado_en!: Date;
+  
+  @BeforeInsert()
+    setTimestamp1() {
+      this.creado_en = new Date(); // new Date() usa la hora local del servidor
+  }
 
   // Relación ManyToOne con Usuario
   @ManyToOne(() => Usuario, (usuario) => usuario.otps)

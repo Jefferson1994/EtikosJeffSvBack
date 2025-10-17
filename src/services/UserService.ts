@@ -1,43 +1,46 @@
-import { AppDataSource } from "../config/data-source"; 
+import { AppDataSource } from "../config/data-source";
 import { Usuario } from '../entities/Usuario';
 import { Rol } from "../entities/Rol";
 import bcrypt from 'bcryptjs';
 import { EntityManager, QueryFailedError } from "typeorm";
 import { Otp } from "../entities/Otp"; // Importar la entidad Otp
 import { TipoOtp } from "../entities/TipoOtp"; // Importar la entidad TipoOtp
-import * as dotenv from 'dotenv'; 
+import * as dotenv from 'dotenv';
 import * as jwt from 'jsonwebtoken'; // Importar jsonwebtoken
-import { sendEmail, generateOtp,prepareOtpVerificationEmail } from './EmailService'; // Importar el EmailService
+import { sendEmail, generateOtp, prepareOtpVerificationEmail, prepareLoginSuccessEmail, otpVerificaion2Pasos,preparePasswordChangedEmail } from './EmailService'; // Importar el EmailService
 import { Cliente } from "../entities/Cliente";
 import { sendSms } from "./sms.service";
 import { ActionStatus, AuditLog } from "../entities/audit_logs";
 import { ActionType } from "../entities/action_types";
+import { LoginResponse } from '../interfaces/userInterfaces';
+import { ValidationResponse } from '../interfaces/userInterfaces';
+import { Verify2faResponse } from '../interfaces/userInterfaces';
 
 
 const usuarioRepository = AppDataSource.getRepository(Usuario);
 const JWT_SECRET = process.env.NODE_ENV === 'development'
-  ? process.env.JWT_Desarrollo 
-  : process.env.JWT_SECRET ;
+  ? process.env.JWT_Desarrollo
+  : process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   console.error("ERROR CRÍTICO: La variable de entorno JWT_SECRET o JWT_Desarrollo no está definida en UserService.");
   console.error("Por favor, asegúrate de configurar JWT_SECRET en .env para producción, o JWT_Desarrollo en .env para desarrollo.");
   process.exit(1);
 }
-dotenv.config(); 
+dotenv.config();
 
 
 export const obtenerUsuarios = async () => {
   return await usuarioRepository.find();
 };
 
-export const crearUsuario = async (datos: Partial<Usuario>, ipAddress: string | null, 
+export const crearUsuario = async (datos: Partial<Usuario>, ipAddress: string | null,
   userAgent: string | null): Promise<Usuario> => {
   return await AppDataSource.manager.transaction(async (transactionalEntityManager) => {
     try {
       // Validaciones para los campos obligatorios (NOT NULL)
       if (!datos.correo) throw new Error("El correo electrónico es obligatorio.");
       if (!datos.nombre) throw new Error("El nombre es obligatorio.");
-      if (!datos.contrasena) throw new  Error("La contraseña es obligatoria.");
+      if (!datos.contrasena) throw new Error("La contraseña es obligatoria.");
       if (!datos.id_rol) throw new Error("El ID del rol es obligatorio.");
 
       const saltRounds = 10;
@@ -45,12 +48,12 @@ export const crearUsuario = async (datos: Partial<Usuario>, ipAddress: string | 
       datos.contrasena = hashedPassword;
 
       const nuevoUsuario = transactionalEntityManager.create(Usuario, datos);
-    
+
       const usuarioGuardado = await transactionalEntityManager.save(Usuario, nuevoUsuario);
 
       const nuevoCliente = transactionalEntityManager.create(Cliente, {
-                direccion: "direccion de prueba",
-                id_usuario: usuarioGuardado.id, // Se vincula el ID del nuevo usuario
+        direccion: "direccion de prueba",
+        id_usuario: usuarioGuardado.id, // Se vincula el ID del nuevo usuario
       });
       await transactionalEntityManager.save(Cliente, nuevoCliente);
 
@@ -124,8 +127,8 @@ export const crearUsuario = async (datos: Partial<Usuario>, ipAddress: string | 
 
 type TipoResumen = "ingresos" | "egresos";
 
-export const obtenerLoginPorMail = async (correo: string, contrasena: string ,ipAddress: string | null, 
-  userAgent: string | null): Promise<{ user: Partial<Usuario>, token: string } | null> => {
+export const obtenerLoginPorMail = async (correo: string, contrasena: string, ipAddress: string | null,
+  userAgent: string | null): Promise<LoginResponse>  => {
   console.log("--- Inicio de obtenerLoginPorMail ---");
   console.log("Correo recibido:", correo);
   // console.log("Contraseña recibida (sin hashear):", contrasena); // NO loguear esto en producción
@@ -147,34 +150,79 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string ,ip
 
       if (isPasswordMatch) {
         console.log("Contraseña verificada exitosamente. Login OK.");
-        await registrarAuditoria(
-          AppDataSource.manager,
-          'LOGIN_SUCCESS',
-          usuario.id, // ID del usuario que inició sesión
-          ipAddress,
-          userAgent,
-          ActionStatus.SUCCESS,
-          `Inicio de sesión exitoso para el usuario: ${usuario.correo}`
-        );
 
-        // Crear una copia del usuario y eliminar la propiedad de la contraseña
-        const usuarioSinContrasena: Partial<Usuario> = { ...usuario };
-        delete (usuarioSinContrasena as any).contrasena; // Eliminar la contraseña del objeto a devolver
+        if (usuario.autenticacion_dos_pasos_activa == 1) {
+          const otpRepository = AppDataSource.getRepository(Otp);
+          const tipoOtpRepository = AppDataSource.getRepository(TipoOtp);
 
-        // Crear el payload del token con información no sensible del usuario
-        const payload = {
-          id: usuario.id,
-          correo: usuario.correo,
-          id_rol: usuario.id_rol,
-          rolNombre: usuario.rol ? usuario.rol.nombre : null // Asegurarse de que el rol se cargó
-        };
+          const tipo2fa = await tipoOtpRepository.findOne({ where: { nombre: 'LOGIN_2FA' } });
+          if (!tipo2fa) {
+            throw new Error('El tipo de OTP "LOGIN_2FA" no está configurado en la base de datos.');
+          }
 
-        // Generar el token JWT
-        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '2h' }); // Token válido por 1 hora
+          const otpCode = generateOtp(6);
+          const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // Válido por 10 minutos
 
-        console.log("Token JWT generado."); // No loguear el token completo en producción
-        
-        return { user: usuarioSinContrasena, token: token }; // Devolver usuario (sin contraseña) y token
+          const newOtp = otpRepository.create({
+            id_usuario: usuario.id,
+            id_tipo_otp: tipo2fa.id,
+            codigo: otpCode,
+            expira_en: otpExpiresAt,
+            usado: false,
+          });
+          await otpRepository.save(newOtp);
+
+          // 2. Enviar el OTP por correo
+          const { emailSubject, emailHtml } = otpVerificaion2Pasos(usuario.nombre, otpCode);
+          await sendEmail(usuario.correo, emailSubject, `Tu código de verificación es: ${otpCode}`, emailHtml);
+
+          // 3. Devolver una respuesta que indique que se requiere el OTP
+          return {
+            twoFactorRequired: true,
+            message: 'Se requiere verificación de dos pasos. Por favor, ingresa el código que enviamos a tu correo.'
+          };
+
+        } else {
+          console.log("2FA no está activa. Procediendo con login normal.");
+          await registrarAuditoria(
+            AppDataSource.manager,
+            'LOGIN_SUCCESS',
+            usuario.id, // ID del usuario que inició sesión
+            ipAddress,
+            userAgent,
+            ActionStatus.SUCCESS,
+            `Inicio de sesión exitoso para el usuario: ${usuario.correo}`
+          );
+
+          const { emailSubject, emailHtml } = prepareLoginSuccessEmail(
+            usuario.nombre,
+            ipAddress,
+            userAgent
+          );
+          await sendEmail(usuario.correo, emailSubject, `Nuevo inicio de sesión detectado.`, emailHtml);
+          console.log(`Notificación de login exitoso enviada a ${usuario.correo}`);
+
+          // Crear una copia del usuario y eliminar la propiedad de la contraseña
+          const usuarioSinContrasena: Partial<Usuario> = { ...usuario };
+          delete (usuarioSinContrasena as any).contrasena; // Eliminar la contraseña del objeto a devolver
+
+          // Crear el payload del token con información no sensible del usuario
+          const payload = {
+            id: usuario.id,
+            correo: usuario.correo,
+            id_rol: usuario.id_rol,
+            rolNombre: usuario.rol ? usuario.rol.nombre : null // Asegurarse de que el rol se cargó
+          };
+
+          // Generar el token JWT
+          const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '2h' }); // Token válido por 1 hora
+
+          console.log("Token JWT generado."); // No loguear el token completo en producción
+
+          return { user: usuarioSinContrasena, token: token,twoFactorRequired: false }; // Devolver usuario (sin contraseña) y token
+
+        }
+
       } else {
         console.log("Contraseña NO coincide. Credenciales inválidas.");
         await registrarAuditoria(
@@ -199,6 +247,7 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string ,ip
         userAgent,
         ActionStatus.FAILURE,
         `Intento de login fallido para el correo inexistente: ${correo}`
+
       );
       return null;
     }
@@ -210,7 +259,219 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string ,ip
   }
 };
 
+// activar cuenta
+export const validarOtpVerificacionCuenta = async (
+  correo: string,
+  codigoOtp: string,
+  ipAddress: string | null,
+  userAgent: string | null
+): Promise<ValidationResponse> => {
+  return await AppDataSource.manager.transaction(async (entityManager) => {
+    const usuarioRepository = entityManager.getRepository(Usuario);
+    const otpRepository = entityManager.getRepository(Otp);
 
+    const usuario = await usuarioRepository.findOne({ where: { correo } });
+    if (!usuario) {
+      // no se encuentra el usuario
+      return { success: false, message: 'Usuario no encontrado.' };
+    }
+    if (usuario.esta_verificado === 1) {
+      return { success: true, message: 'Esta cuenta ya ha sido verificada.' };
+    }
+
+    const otpEncontrado = await otpRepository.findOne({
+      where: {
+        id_usuario: usuario.id,
+        usado: false,
+        tipoOtp: { nombre: 'VERIFICACION_CUENTA' }
+      },
+      relations: ['tipoOtp'],
+      order: { creado_en: 'DESC' }
+    });
+
+    if (!otpEncontrado) {
+      return { success: false, message: 'No se encontró un código de verificación pendiente.' };
+    }
+
+    // --- OTP Expired Logic ---
+    if (new Date() > otpEncontrado.expira_en) {
+      otpEncontrado.usado = true; 
+      await otpRepository.save(otpEncontrado);
+
+      await registrarAuditoria(
+        entityManager,
+        'VERIFY_ACCOUNT_FAILED',
+        usuario.id,
+        ipAddress,
+        userAgent,
+        ActionStatus.FAILURE,
+        `Intento de verificación fallido para ${correo} (OTP expirado).`
+      );
+
+      return { success: false, message: 'El código OTP ha expirado. Por favor, solicita uno nuevo.' };
+    }
+
+    // --- otp es incorrecto ---
+    if (otpEncontrado.codigo !== codigoOtp) {
+      await registrarAuditoria(
+        entityManager,
+        'VERIFY_ACCOUNT_FAILED',
+        usuario.id,
+        ipAddress,
+        userAgent,
+        ActionStatus.FAILURE,
+        `Intento de verificación fallido para ${correo} (OTP incorrecto).`
+      );
+
+      return { success: false, message: 'El código OTP es incorrecto.' };
+    }
+
+    // --- otp es correcto ---
+    otpEncontrado.usado = true;
+    usuario.esta_verificado = 1;
+
+    await otpRepository.save(otpEncontrado);
+    await usuarioRepository.save(usuario);
+
+
+    await registrarAuditoria(
+      entityManager,
+      'VERIFY_ACCOUNT_SUCCESS',
+      usuario.id,
+      ipAddress,
+      userAgent,
+      ActionStatus.SUCCESS,
+      `Cuenta verificada exitosamente para ${correo}.`
+    );
+
+    return { success: true, message: '¡Cuenta verificada exitosamente! Ahora puedes iniciar sesión.' };
+  });
+};
+
+// login con doble factor
+export const validarOtpLogin2FA = async (
+  correo: string,
+  codigoOtp: string,
+  ipAddress: string | null,
+  userAgent: string | null
+): Promise<Verify2faResponse | null> => { // Devuelve el objeto de login o null
+  const usuarioRepository = AppDataSource.getRepository(Usuario);
+  const otpRepository = AppDataSource.getRepository(Otp);
+
+  // 1. Buscar al usuario por su correo
+  const usuario = await usuarioRepository.findOne({ where: { correo }, relations: ['rol'] });
+  if (!usuario) {
+    // Aunque es raro llegar aquí, es una buena validación
+    return null;
+  }
+
+  // 2. Buscar el OTP más reciente, no usado y del tipo LOGIN_2FA
+  const otpEncontrado = await otpRepository.findOne({
+    where: {
+      id_usuario: usuario.id,
+      usado: false,
+      tipoOtp: { nombre: 'LOGIN_2FA' }
+    },
+    relations: ['tipoOtp'],
+    order: { creado_en: 'DESC' }
+  });
+
+  if (!otpEncontrado) {
+    await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id, ipAddress, userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (no se encontró OTP pendiente).`);
+    return null;
+  }
+
+  // 3. Verificar si el OTP ha expirado
+  if (new Date() > otpEncontrado.expira_en) {
+    otpEncontrado.usado = true;
+    await otpRepository.save(otpEncontrado);
+    await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id, ipAddress, userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (OTP expirado).`);
+    return null;
+  }
+
+  // 4. Verificar si el código coincide
+  if (otpEncontrado.codigo !== codigoOtp) {
+    await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id, ipAddress, userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (OTP incorrecto).`);
+    return null;
+  }
+
+  // 5. ¡Éxito! El OTP es correcto. Procedemos a finalizar el login.
+  otpEncontrado.usado = true;
+  await otpRepository.save(otpEncontrado);
+
+  // Auditar el éxito del login
+  await registrarAuditoria(AppDataSource.manager, 'LOGIN_SUCCESS', usuario.id, ipAddress, userAgent, ActionStatus.SUCCESS, `Inicio de sesión exitoso vía 2FA para ${correo}.`);
+
+  // Generar el token JWT (misma lógica que en tu login normal)
+  const payload = { id: usuario.id, correo: usuario.correo, rolNombre: usuario.rol ? usuario.rol.nombre : null };
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '2h' });
+
+  const usuarioSinContrasena: Partial<Usuario> = { ...usuario };
+  delete (usuarioSinContrasena as any).contrasena;
+
+  // Devolver el mismo objeto que un login exitoso
+  return {
+    user: usuarioSinContrasena,
+    token: token,
+    twoFactorRequired: false
+  };
+};
+
+// cambiar contrasenia
+export const cambiarContrasena = async (
+  idUsuario: number,
+  contrasenaActual: string,
+  nuevaContrasena: string,
+  ipAddress: string | null,
+  userAgent: string | null
+): Promise<{ success: boolean; message: string }> => {
+  const usuarioRepository = AppDataSource.getRepository(Usuario);
+
+  // 1. Busca al usuario usando el ID del token.
+  const usuario = await usuarioRepository.findOne({ where: { id: idUsuario } });
+  if (!usuario) {
+    // Esto es una salvaguarda, no debería ocurrir si el token JWT es válido.
+    throw new Error('Usuario autenticado no encontrado en la base de datos.');
+  }
+
+  // 2. Verifica que la contraseña actual proporcionada sea correcta.
+  const isPasswordMatch = await bcrypt.compare(contrasenaActual, usuario.contrasena);
+  if (!isPasswordMatch) {
+    // Auditamos el intento fallido antes de lanzar el error.
+    await registrarAuditoria(
+      AppDataSource.manager,
+      'PASSWORD_UPDATE_FAILED', // Necesitarás crear esta acción en tu tabla action_types
+      usuario.id,
+      ipAddress,
+      userAgent,
+      ActionStatus.FAILURE,
+      'Intento de cambio de contraseña con contraseña actual incorrecta.'
+    );
+    throw new Error('La contraseña actual es incorrecta.');
+  }
+
+  // 3. Hashea y actualiza la nueva contraseña.
+  const saltRounds = 10;
+  const hashedNewPassword = await bcrypt.hash(nuevaContrasena, saltRounds);
+  usuario.contrasena = hashedNewPassword;
+  await usuarioRepository.save(usuario);
+
+  // 4. Audita el cambio exitoso.
+  await registrarAuditoria(
+    AppDataSource.manager,
+    'PASSWORD_UPDATED',
+    usuario.id,
+    ipAddress,
+    userAgent,
+    ActionStatus.SUCCESS,
+    'El usuario ha cambiado su contraseña exitosamente.'
+  );
+  
+  // (Opcional, pero recomendado) Envía una notificación por correo al usuario.
+  const { emailSubject, emailHtml } = preparePasswordChangedEmail(usuario.nombre);
+  await sendEmail(usuario.correo, emailSubject, '', emailHtml);
+  return { success: true, message: 'Contraseña actualizada exitosamente.' };
+};
 
 // La función para auditoria
 export const registrarAuditoria = async (
@@ -248,8 +509,10 @@ export const obtenerRolesActivos = async (): Promise<Rol[]> => {
 
     // Busca todos los roles donde la propiedad 'activo' sea 0 (según tu convención para "activo")
     const rolesActivos = await rolRepository.find({
-      where: { activo: 0 ,
-         visible_registro:0  },
+      where: {
+        activo: 0,
+        visible_registro: 0
+      },
     });
 
     return rolesActivos;

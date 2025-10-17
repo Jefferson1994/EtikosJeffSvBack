@@ -14,8 +14,11 @@ const limiter = rateLimit({
     skipSuccessfulRequests: true,
 });
 
-router.post("/users", UserController.crear);
+router.post("/createUser", UserController.crear);
 router.post("/login",limiter, UserController.LoginPorMail);
+router.post("/verificarCuenta",limiter, UserController.verificarCuenta);
+router.post("/validarOtp2Fa",limiter, UserController.verificarLogin2FA);
+router.post('/cambiarContrasenia', authenticateJWT, UserController.cambiarContrasena);
 router.post("/rol", UserController.RolesActivos);
 router.post('/buscar-por-cedula', authenticateJWT, UserController.obtenerPorCedula);
 router.post('/empresasVinculadas', authenticateJWT, UserController.obtenerMisNegociosVinculados);

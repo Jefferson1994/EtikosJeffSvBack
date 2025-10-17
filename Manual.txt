@@ -2,5 +2,5 @@ como correr servidor
 
 1. Abrir un terminal apuntando a la carpeta descomprimida.
 3. Instalar las dependencias con npm install.
-4. Correr el proyecto con el comando npm run start:dev
+4. Correr el proyecto con el comando :npm run start:dev
 5. Se abrirá el servicio en el puerto http://localhost:3002

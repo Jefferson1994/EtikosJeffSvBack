@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  BeforeInsert,
 } from 'typeorm';
 import { ActionType } from './action_types';
 
@@ -56,6 +57,11 @@ export class AuditLog {
   @Column({ type: 'text', nullable: true })
   details!: string | null;
 
-  @CreateDateColumn()
+  @Column({ type: 'datetime' })
   timestamp!: Date;
+
+  @BeforeInsert()
+  setTimestamp() {
+    this.timestamp = new Date(); // new Date() usa la hora local del servidor
+  }
 }
