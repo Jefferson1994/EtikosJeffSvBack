@@ -1,13 +1,13 @@
 import { AppDataSource } from "../config/data-source";
 import { Usuario } from '../entities/Usuario';
-import { Rol } from "../entities/Rol";
 import bcrypt from 'bcryptjs';
 import { EntityManager, QueryFailedError } from "typeorm";
-import { Otp } from "../entities/Otp"; // Importar la entidad Otp
-import { TipoOtp } from "../entities/TipoOtp"; // Importar la entidad TipoOtp
+import { Otp } from "../entities/Otp"; 
+import { TipoOtp } from "../entities/TipoOtp"; 
 import * as dotenv from 'dotenv';
-import * as jwt from 'jsonwebtoken'; // Importar jsonwebtoken
-import { sendEmail, generateOtp, prepareOtpVerificationEmail, prepareLoginSuccessEmail, otpVerificaion2Pasos,preparePasswordChangedEmail } from './EmailService'; // Importar el EmailService
+import * as jwt from 'jsonwebtoken'; 
+import { sendEmail, generateOtp, prepareOtpVerificationEmail,
+   prepareLoginSuccessEmail, otpVerificaion2Pasos,preparePasswordChangedEmail,prepareAccountStatusChangeEmail } from './EmailService'; // Importar el EmailService
 import { Cliente } from "../entities/Cliente";
 import { sendSms } from "./sms.service";
 import { ActionStatus, AuditLog } from "../entities/audit_logs";
@@ -15,6 +15,7 @@ import { ActionType } from "../entities/action_types";
 import { LoginResponse } from '../interfaces/userInterfaces';
 import { ValidationResponse } from '../interfaces/userInterfaces';
 import { Verify2faResponse } from '../interfaces/userInterfaces';
+import { ConfigService } from './config.service';
 
 
 const usuarioRepository = AppDataSource.getRepository(Usuario);
@@ -69,8 +70,14 @@ export const crearUsuario = async (datos: Partial<Usuario>, ipAddress: string | 
         await tipoOtpRepository.save(tipoVerificacion);
       }
 
-      const otpCode = generateOtp(6);
-      const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // OTP válido por 15 minutos
+    
+
+      
+      const otpMinutes = ConfigService.getNumber('OTP_EXPIRATION_MINUTES', 15); 
+      const otpTamanio = ConfigService.getNumber('OTP_LENGTH', 6); 
+      const otpCode = generateOtp(otpTamanio);
+      const otpExpiresAt = new Date(Date.now() + otpMinutes * 60 * 1000);
+
 
       const newOtp = otpRepository.create({
         id_usuario: usuarioGuardado.id,
@@ -98,7 +105,8 @@ export const crearUsuario = async (datos: Partial<Usuario>, ipAddress: string | 
         ipAddress,
         userAgent,
         ActionStatus.SUCCESS,
-        `Usuario registrado exitosamente con el correo: ${usuarioGuardado.correo}`
+        `Usuario registrado exitosamente con el correo: ${usuarioGuardado.correo}`,
+        null
       );
       console.log(`Auditoría registrada para el evento USER_REGISTERED del usuario ID: ${usuarioGuardado.id}`);
 
@@ -144,7 +152,53 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string, ip
     console.log("Usuario encontrado en DB:", usuario ? usuario.correo : "Ninguno");
 
     if (usuario) {
-      // console.log("Contraseña del usuario en DB (hash):", usuario.contrasena); // No loguear hash en producción
+      
+      // --- INICIO DE VALIDACIONES ADICIONALES ---
+
+      // VALIDACIÓN 1: Cuenta activa/bloqueada
+      // Asumiendo que 'activo' es 0 (bloqueado/inactivo) o 1 (activo)
+      if (usuario.activo == 0) { 
+        console.warn(`Intento de login para cuenta bloqueada: ${correo}`);
+        await registrarAuditoria(
+          AppDataSource.manager,
+          'LOGIN_FAILED_LOCKED', // Tipo de auditoría específico
+          usuario.id, 
+          ipAddress,
+          userAgent,
+          ActionStatus.FAILURE,
+          `Intento de login en cuenta bloqueada: ${correo}`,
+          null
+        );
+        // Devolver una respuesta clara para el frontend
+        // Asegúrate de que tu tipo LoginResponse soporte este formato de error
+        return {
+          error: true, 
+          message: 'Tu cuenta está bloqueada o inactiva. Por favor, contacta al administrador.'
+        };
+      }
+
+      // VALIDACIÓN 2: Cuenta verificada
+      // Asumiendo que 'verificado' es 0 (no verificado) o 1 (verificado)
+      if (usuario.esta_verificado == 0) {
+        console.warn(`Intento de login para cuenta no verificada: ${correo}`);
+        await registrarAuditoria(
+          AppDataSource.manager,
+          'LOGIN_FAILED_UNVERIFIED', // Tipo de auditoría específico
+          usuario.id,
+          ipAddress,
+          userAgent,
+          ActionStatus.FAILURE,
+          `Intento de login en cuenta no verificada: ${correo}`,
+          null
+        );
+        // Devolver una respuesta clara para el frontend
+        return {
+          error: true, 
+          message: 'Tu cuenta no ha sido verificada. Por favor, revisa tu correo para activar tu cuenta.'
+          // Opcionalmente, podrías añadir un botón de "reenviar email de verificación" en tu frontend
+        };
+      }
+      
       const isPasswordMatch = await bcrypt.compare(contrasena, usuario.contrasena);
       console.log("Resultado de bcrypt.compare (¿Contraseña coincide?):", isPasswordMatch);
 
@@ -160,8 +214,10 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string, ip
             throw new Error('El tipo de OTP "LOGIN_2FA" no está configurado en la base de datos.');
           }
 
-          const otpCode = generateOtp(6);
-          const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // Válido por 10 minutos
+          const otpMinutes = ConfigService.getNumber('OTP_EXPIRATION_MINUTES', 15); 
+          const otpTamanio = ConfigService.getNumber('OTP_LENGTH', 6); 
+          const otpCode = generateOtp(otpTamanio);
+          const otpExpiresAt = new Date(Date.now() + otpMinutes * 60 * 1000);
 
           const newOtp = otpRepository.create({
             id_usuario: usuario.id,
@@ -191,7 +247,8 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string, ip
             ipAddress,
             userAgent,
             ActionStatus.SUCCESS,
-            `Inicio de sesión exitoso para el usuario: ${usuario.correo}`
+            `Inicio de sesión exitoso para el usuario: ${usuario.correo}`,
+            null
           );
 
           const { emailSubject, emailHtml } = prepareLoginSuccessEmail(
@@ -232,7 +289,8 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string, ip
           ipAddress,
           userAgent,
           ActionStatus.FAILURE,
-          `Intento de login fallido para el contrasenia inexistente: ${correo}`
+          `Intento de login fallido para el contrasenia inexistente: ${correo}`,
+          null
         );
         return null;
       }
@@ -246,7 +304,8 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string, ip
         ipAddress,
         userAgent,
         ActionStatus.FAILURE,
-        `Intento de login fallido para el correo inexistente: ${correo}`
+        `Intento de login fallido para el correo inexistente: ${correo}`,
+        null
 
       );
       return null;
@@ -305,7 +364,8 @@ export const validarOtpVerificacionCuenta = async (
         ipAddress,
         userAgent,
         ActionStatus.FAILURE,
-        `Intento de verificación fallido para ${correo} (OTP expirado).`
+        `Intento de verificación fallido para ${correo} (OTP expirado).`,
+        null
       );
 
       return { success: false, message: 'El código OTP ha expirado. Por favor, solicita uno nuevo.' };
@@ -320,7 +380,8 @@ export const validarOtpVerificacionCuenta = async (
         ipAddress,
         userAgent,
         ActionStatus.FAILURE,
-        `Intento de verificación fallido para ${correo} (OTP incorrecto).`
+        `Intento de verificación fallido para ${correo} (OTP incorrecto).`,
+        null
       );
 
       return { success: false, message: 'El código OTP es incorrecto.' };
@@ -341,7 +402,8 @@ export const validarOtpVerificacionCuenta = async (
       ipAddress,
       userAgent,
       ActionStatus.SUCCESS,
-      `Cuenta verificada exitosamente para ${correo}.`
+      `Cuenta verificada exitosamente para ${correo}.`,
+      null
     );
 
     return { success: true, message: '¡Cuenta verificada exitosamente! Ahora puedes iniciar sesión.' };
@@ -350,72 +412,76 @@ export const validarOtpVerificacionCuenta = async (
 
 // login con doble factor
 export const validarOtpLogin2FA = async (
-  correo: string,
-  codigoOtp: string,
-  ipAddress: string | null,
-  userAgent: string | null
-): Promise<Verify2faResponse | null> => { // Devuelve el objeto de login o null
-  const usuarioRepository = AppDataSource.getRepository(Usuario);
-  const otpRepository = AppDataSource.getRepository(Otp);
+    correo: string,
+    codigoOtp: string,
+    ipAddress: string | null,
+    userAgent: string | null
+  ): Promise<Verify2faResponse | null> => { // Devuelve el objeto de login o null
+    const usuarioRepository = AppDataSource.getRepository(Usuario);
+    const otpRepository = AppDataSource.getRepository(Otp);
 
-  // 1. Buscar al usuario por su correo
-  const usuario = await usuarioRepository.findOne({ where: { correo }, relations: ['rol'] });
-  if (!usuario) {
-    // Aunque es raro llegar aquí, es una buena validación
-    return null;
-  }
+    // 1. Buscar al usuario por su correo
+    const usuario = await usuarioRepository.findOne({ where: { correo }, relations: ['rol'] });
+    if (!usuario) {
+      // Aunque es raro llegar aquí, es una buena validación
+      return null;
+    }
 
-  // 2. Buscar el OTP más reciente, no usado y del tipo LOGIN_2FA
-  const otpEncontrado = await otpRepository.findOne({
-    where: {
-      id_usuario: usuario.id,
-      usado: false,
-      tipoOtp: { nombre: 'LOGIN_2FA' }
-    },
-    relations: ['tipoOtp'],
-    order: { creado_en: 'DESC' }
-  });
+    // 2. Buscar el OTP más reciente, no usado y del tipo LOGIN_2FA
+    const otpEncontrado = await otpRepository.findOne({
+      where: {
+        id_usuario: usuario.id,
+        usado: false,
+        tipoOtp: { nombre: 'LOGIN_2FA' }
+      },
+      relations: ['tipoOtp'],
+      order: { creado_en: 'DESC' }
+    });
 
-  if (!otpEncontrado) {
-    await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id, ipAddress, userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (no se encontró OTP pendiente).`);
-    return null;
-  }
+    if (!otpEncontrado) {
+      await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id, 
+        ipAddress, userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (no se encontró OTP pendiente).`,null);
+      return null;
+    }
 
-  // 3. Verificar si el OTP ha expirado
-  if (new Date() > otpEncontrado.expira_en) {
+    // 3. Verificar si el OTP ha expirado
+    if (new Date() > otpEncontrado.expira_en) {
+      otpEncontrado.usado = true;
+      await otpRepository.save(otpEncontrado);
+      await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id,
+        ipAddress, userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (OTP expirado).`,null);
+      return null;
+    }
+
+    // 4. Verificar si el código coincide
+    if (otpEncontrado.codigo !== codigoOtp) {
+      await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id, ipAddress, 
+        userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (OTP incorrecto).`,null);
+      return null;
+    }
+
+    // 5. ¡Éxito! El OTP es correcto. Procedemos a finalizar el login.
     otpEncontrado.usado = true;
     await otpRepository.save(otpEncontrado);
-    await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id, ipAddress, userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (OTP expirado).`);
-    return null;
-  }
 
-  // 4. Verificar si el código coincide
-  if (otpEncontrado.codigo !== codigoOtp) {
-    await registrarAuditoria(AppDataSource.manager, 'LOGIN_FAILED', usuario.id, ipAddress, userAgent, ActionStatus.FAILURE, `Intento de login 2FA fallido para ${correo} (OTP incorrecto).`);
-    return null;
-  }
+    // Auditar el éxito del login
+    await registrarAuditoria(AppDataSource.manager, 'LOGIN_SUCCESS', usuario.id, ipAddress, 
+      userAgent, ActionStatus.SUCCESS, `Inicio de sesión exitoso vía 2FA para ${correo}.`,null);
 
-  // 5. ¡Éxito! El OTP es correcto. Procedemos a finalizar el login.
-  otpEncontrado.usado = true;
-  await otpRepository.save(otpEncontrado);
+    // Generar el token JWT (misma lógica que en tu login normal)
+    const payload = { id: usuario.id, correo: usuario.correo, rolNombre: usuario.rol ? usuario.rol.nombre : null };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '2h' });
 
-  // Auditar el éxito del login
-  await registrarAuditoria(AppDataSource.manager, 'LOGIN_SUCCESS', usuario.id, ipAddress, userAgent, ActionStatus.SUCCESS, `Inicio de sesión exitoso vía 2FA para ${correo}.`);
+    const usuarioSinContrasena: Partial<Usuario> = { ...usuario };
+    delete (usuarioSinContrasena as any).contrasena;
 
-  // Generar el token JWT (misma lógica que en tu login normal)
-  const payload = { id: usuario.id, correo: usuario.correo, rolNombre: usuario.rol ? usuario.rol.nombre : null };
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '2h' });
-
-  const usuarioSinContrasena: Partial<Usuario> = { ...usuario };
-  delete (usuarioSinContrasena as any).contrasena;
-
-  // Devolver el mismo objeto que un login exitoso
-  return {
-    user: usuarioSinContrasena,
-    token: token,
-    twoFactorRequired: false
+    // Devolver el mismo objeto que un login exitoso
+    return {
+      user: usuarioSinContrasena,
+      token: token,
+      twoFactorRequired: false
+    };
   };
-};
 
 // cambiar contrasenia
 export const cambiarContrasena = async (
@@ -437,15 +503,16 @@ export const cambiarContrasena = async (
   // 2. Verifica que la contraseña actual proporcionada sea correcta.
   const isPasswordMatch = await bcrypt.compare(contrasenaActual, usuario.contrasena);
   if (!isPasswordMatch) {
-    // Auditamos el intento fallido antes de lanzar el error.
+ 
     await registrarAuditoria(
       AppDataSource.manager,
-      'PASSWORD_UPDATE_FAILED', // Necesitarás crear esta acción en tu tabla action_types
+      'PASSWORD_UPDATE_FAILED', 
       usuario.id,
       ipAddress,
       userAgent,
       ActionStatus.FAILURE,
-      'Intento de cambio de contraseña con contraseña actual incorrecta.'
+      'Intento de cambio de contraseña con contraseña actual incorrecta.',
+      null
     );
     throw new Error('La contraseña actual es incorrecta.');
   }
@@ -464,7 +531,8 @@ export const cambiarContrasena = async (
     ipAddress,
     userAgent,
     ActionStatus.SUCCESS,
-    'El usuario ha cambiado su contraseña exitosamente.'
+    'El usuario ha cambiado su contraseña exitosamente.',
+    null
   );
   
   // (Opcional, pero recomendado) Envía una notificación por correo al usuario.
@@ -475,53 +543,29 @@ export const cambiarContrasena = async (
 
 // La función para auditoria
 export const registrarAuditoria = async (
-  entityManager: EntityManager, // <-- NUEVO PARÁMETRO
-  nombreAccion: string,
-  idUsuario: number | null,
-  ipAddress: string | null,
-  userAgent: string | null,
-  status: ActionStatus,
-  details: string
-) => {
-  // Usa el entityManager para obtener los repositorios, NO el AppDataSource
-  const auditRepo = entityManager.getRepository(AuditLog);
-  const actionTypeRepo = entityManager.getRepository(ActionType);
+  entityManager: EntityManager, nombreAccion: string, idUsuario: number | null, ipAddress: string | null, 
+  userAgent: string | null, status: ActionStatus, details: string, idUsuarioObjetivo: number| null) => {
+    // Usa el entityManager para obtener los repositorios, NO el AppDataSource
+    const auditRepo = entityManager.getRepository(AuditLog);
+    const actionTypeRepo = entityManager.getRepository(ActionType);
 
-  const accion = await actionTypeRepo.findOne({ where: { nombre: nombreAccion } });
-  if (accion) {
-    const newLog = auditRepo.create({
-      id_accion: accion.id,
-      id_usuario: idUsuario,
-      ip_address: ipAddress,
-      user_agent: userAgent,
-      status: status,
-      details: details,
-    });
-    // Esta operación de 'save' ahora es parte de la transacción principal
-    await auditRepo.save(newLog);
-  }
-};
+    const accion = await actionTypeRepo.findOne({ where: { nombre: nombreAccion } });
+    if (accion) {
+      const newLog = auditRepo.create({
+        id_accion: accion.id,
+        id_usuario: idUsuario,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        status: status,
+        details: details,
+        target_user_id: idUsuarioObjetivo
+      });
+      // Esta operación de 'save' ahora es parte de la transacción principal
+      await auditRepo.save(newLog);
+    }
+  };
 
 
-export const obtenerRolesActivos = async (): Promise<Rol[]> => {
-  try {
-    const rolRepository = AppDataSource.getRepository(Rol);
-
-    // Busca todos los roles donde la propiedad 'activo' sea 0 (según tu convención para "activo")
-    const rolesActivos = await rolRepository.find({
-      where: {
-        activo: 0,
-        visible_registro: 0
-      },
-    });
-
-    return rolesActivos;
-  } catch (error: unknown) { // Captura el error para un manejo profesional
-    console.error("Error en obtenerRolesActivos:", (error as Error).message);
-    // Relanza el error para que el controlador o la capa superior puedan manejarlo
-    throw new Error("No se pudieron obtener los roles activos. Por favor, inténtalo de nuevo más tarde.");
-  }
-};
 
 
 
@@ -556,3 +600,87 @@ export const obtenerUsuarioPorIdentificacion = async (numeroIdentificacion: stri
   }
 };
 
+
+
+
+export const cambiarEstadoUsuario = async (
+  idAdmin: number,
+  identificacionUsuarioObjetivo: string,
+  nuevoEstadoActivo: number,
+  ipAddress: string | null,
+  userAgent: string | null
+): Promise<{ success: boolean; message: string }> => {
+
+  if (!identificacionUsuarioObjetivo) {
+    throw new Error('El número de identificación del usuario objetivo es requerido.');
+  }
+
+  const usuarioRepository = AppDataSource.getRepository(Usuario);
+  const usuarioObjetivo = await usuarioRepository.findOne({
+    where: { numero_identificacion: identificacionUsuarioObjetivo },
+    relations: ['rol']
+  });
+
+  if (!usuarioObjetivo) {
+    throw new Error(`No se encontró un usuario con la identificación: ${identificacionUsuarioObjetivo}.`);
+  }
+
+  if (idAdmin === usuarioObjetivo.id) {
+    throw new Error('Un administrador no puede bloquearse o desbloquearse a sí mismo.');
+  }
+
+  if (usuarioObjetivo.rol && usuarioObjetivo.rol.nombre === 'Admin' && nuevoEstadoActivo === 0) {
+    throw new Error('No se puede bloquear a otro administrador.');
+  }
+
+  if (usuarioObjetivo.activo === nuevoEstadoActivo) {
+    const estadoActualStr = nuevoEstadoActivo === 1 ? 'activo' : 'bloqueado';
+    return { success: true, message: `El usuario ya se encuentra ${estadoActualStr}.` };
+  }
+
+  // Actualizar el estado
+  usuarioObjetivo.activo = nuevoEstadoActivo;
+  await usuarioRepository.save(usuarioObjetivo);
+
+  // Preparar datos para la auditoría y notificación
+  const esDesbloqueo = nuevoEstadoActivo === 1; // true si se está desbloqueando
+  const actionName = esDesbloqueo ? 'USER_UNBLOCKED' : 'USER_BLOCKED';
+  const actionVerb = esDesbloqueo ? 'desbloqueado' : 'bloqueado';
+  const details = `El usuario ${usuarioObjetivo.correo} (ID: ${usuarioObjetivo.id}) ha sido ${actionVerb} por el admin ID: ${idAdmin}.`;
+
+  // Registrar auditoría
+  await registrarAuditoria(
+    AppDataSource.manager,
+    actionName,
+    idAdmin,
+    ipAddress,
+    userAgent,
+    ActionStatus.SUCCESS,
+    details,
+    usuarioObjetivo.id
+  );
+
+ 
+  try {
+
+    const { emailSubject, emailHtml } = prepareAccountStatusChangeEmail(
+      usuarioObjetivo.nombre, 
+      esDesbloqueo            
+    );
+    // Envía el correo
+    await sendEmail(
+      usuarioObjetivo.correo, 
+      emailSubject,
+      `Estado de tu cuenta actualizado.`, 
+      emailHtml
+    );
+    console.log(`Notificación de estado (${actionVerb}) enviada a ${usuarioObjetivo.correo}`);
+  } catch (emailError) {
+   
+    console.error(`ERROR AL ENVIAR CORREO de notificación de estado para ${usuarioObjetivo.correo}:`, emailError);
+  }
+
+
+  const message = `El usuario ha sido ${actionVerb} exitosamente.`;
+  return { success: true, message };
+};

@@ -5,6 +5,7 @@ import userRoutes from "./routes/user.routes";
 import cors from "cors";
 import ciudadanoRoutes from './routes/ciudadano.routes';
 import rateLimit from 'express-rate-limit';
+import { ConfigService } from "./services/config.service";
 
 const app = express();
 app.use(cors());
@@ -23,6 +24,9 @@ AppDataSource.initialize()
   .then(async () => {
     console.log("Base de datos conectada");
     await AppDataSource.runMigrations(); 
+    console.log("migraciones ejecutadas");
+    await ConfigService.loadConfig()
+    console.log("configuración base cargada");
 
     app.use("/user", userRoutes);
     app.use('/api/ciudadanos', cedulaLimiter, ciudadanoRoutes);

@@ -19,8 +19,10 @@ router.post("/login",limiter, UserController.LoginPorMail);
 router.post("/verificarCuenta",limiter, UserController.verificarCuenta);
 router.post("/validarOtp2Fa",limiter, UserController.verificarLogin2FA);
 router.post('/cambiarContrasenia', authenticateJWT, UserController.cambiarContrasena);
-router.post("/rol", UserController.RolesActivos);
+router.post('/bloquearUsuario', authenticateJWT, UserController.bloquearUsuario);
+router.post('/desbloquearUsuario', authenticateJWT, UserController.desbloquearUsuario);
 router.post('/buscar-por-cedula', authenticateJWT, UserController.obtenerPorCedula);
+router.post("/rol", UserController.RolesActivos);
 router.post('/empresasVinculadas', authenticateJWT, UserController.obtenerMisNegociosVinculados);
 //router.post("/userId", UserController.obtenerPorId);
 

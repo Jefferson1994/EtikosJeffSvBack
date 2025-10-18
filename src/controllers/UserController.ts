@@ -1,5 +1,9 @@
 import { Request, Response } from 'express';
-import { crearUsuario, obtenerLoginPorMail, obtenerRolesActivos, obtenerUsuarioPorIdentificacion, validarOtpVerificacionCuenta,validarOtpLogin2FA,cambiarContrasena } from '../services/UserService'; // Importa tus funciones de servicio
+import {
+  crearUsuario, obtenerLoginPorMail, obtenerRolesActivos,
+  obtenerUsuarioPorIdentificacion, validarOtpVerificacionCuenta,
+  validarOtpLogin2FA, cambiarContrasena, cambiarEstadoUsuario
+} from '../services/UserService'; // Importa tus funciones de servicio
 import { AppDataSource } from '../config/data-source'; // Asegúrate de importar AppDataSource
 import { Usuario } from '../entities/Usuario'; // Asegúrate de importar la entidad Usuario
 
@@ -13,8 +17,8 @@ interface CustomRequest extends Request {
 }
 
 export class UserController {
-  
-  
+
+
   static async crear(req: Request, res: Response) {
     try {
       const { nombre, correo, contrasena, id_rol, numero_telefono, numero_identificacion } = req.body;
@@ -35,18 +39,18 @@ export class UserController {
       }
 
       const nuevoUsuario = await crearUsuario({
-          nombre,
-          correo,
-          contrasena,
-          id_rol,
-          numero_telefono,
-          numero_identificacion,
-        },
+        nombre,
+        correo,
+        contrasena,
+        id_rol,
+        numero_telefono,
+        numero_identificacion,
+      },
         ipAddress,
         userAgent
       );
 
-      
+
 
       const usuarioParaRespuesta: Partial<Usuario> = { ...nuevoUsuario };
       delete (usuarioParaRespuesta as any).contrasena;
@@ -57,7 +61,7 @@ export class UserController {
       });
     } catch (error: unknown) {
       console.error("Error creando usuario:", (error as Error).message);
-      
+
       // CORREGIDO: Eliminar la lógica duplicada para errores de unicidad
       // Ahora el controlador solo propaga el mensaje de error lanzado por el servicio
       res.status(400).json({ // Usar 400 o 409 si es un error de negocio esperado del servicio
@@ -81,10 +85,20 @@ export class UserController {
       const userAgent = req.headers['user-agent'] || null;
 
       // Controller calls the service function, passing the extracted data
-      const usuario = await obtenerLoginPorMail(email, password,ipAddress,userAgent);
+      const usuario = await obtenerLoginPorMail(email, password, ipAddress, userAgent);
 
-      if (usuario) {
-        // Controller processes the result from the service and sends an HTTP response
+          if (usuario) {
+            // Controller processes the result from the service and sends an HTTP response
+            if ('error' in usuario && usuario.error === true) {
+          
+          // Diferenciamos errores de servidor (500) de errores de autenticación (401)
+          // Asumiendo que tu servicio devuelve un mensaje específico para errores graves
+          if (usuario.message.startsWith('Ocurrió un error inesperado')) {
+            return res.status(500).json({ message: usuario.message });
+          }
+
+          return res.status(401).json({ message: usuario.message });
+        }
         if (usuario.twoFactorRequired) {
           return res.status(200).json({
             twoFactorRequired: true,
@@ -198,40 +212,91 @@ export class UserController {
 
   // cambiar contraseña
   static async cambiarContrasena(req: CustomRequest, res: Response) {
-  try {
-    // 1. Verifica que el usuario esté autenticado (el middleware ya lo hizo).
-    if (!req.user) {
-      return res.status(401).json({ mensaje: "Usuario no autenticado." });
+    try {
+      // 1. Verifica que el usuario esté autenticado (el middleware ya lo hizo).
+      if (!req.user) {
+        return res.status(401).json({ mensaje: "Usuario no autenticado." });
+      }
+
+      // 2. Extrae los datos necesarios.
+      const idUsuario = req.user.id;
+      const { contrasenaActual, nuevaContrasena } = req.body;
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      // 3. Valida que los datos del body estén presentes.
+      if (!contrasenaActual || !nuevaContrasena) {
+        return res.status(400).json({ mensaje: "Se requiere la contraseña actual y la nueva contraseña." });
+      }
+
+      // 4. Llama al servicio con los datos recolectados.
+      const resultado = await cambiarContrasena(idUsuario, contrasenaActual, nuevaContrasena, ipAddress, userAgent);
+
+      // 5. Devuelve una respuesta exitosa.
+      return res.status(200).json(resultado);
+
+    } catch (error: unknown) {
+      const message = (error as Error).message;
+      // Si el error es por contraseña incorrecta, devolvemos un 401 (No autorizado).
+      // Para otros errores, devolvemos un 500 (Error del servidor).
+      const statusCode = message.includes('incorrecta') ? 401 : 500;
+      console.error("Error en UserController.cambiarContrasena:", message);
+      return res.status(statusCode).json({ mensaje: message });
     }
-    
-    // 2. Extrae los datos necesarios.
-    const idUsuario = req.user.id;
-    const { contrasenaActual, nuevaContrasena } = req.body;
-    const ipAddress = req.ip || null;
-    const userAgent = req.headers['user-agent'] || null;
-
-    // 3. Valida que los datos del body estén presentes.
-    if (!contrasenaActual || !nuevaContrasena) {
-      return res.status(400).json({ mensaje: "Se requiere la contraseña actual y la nueva contraseña." });
-    }
-
-    // 4. Llama al servicio con los datos recolectados.
-    const resultado = await cambiarContrasena(idUsuario, contrasenaActual, nuevaContrasena, ipAddress, userAgent);
-
-    // 5. Devuelve una respuesta exitosa.
-    return res.status(200).json(resultado);
-
-  } catch (error: unknown) {
-    const message = (error as Error).message;
-    // Si el error es por contraseña incorrecta, devolvemos un 401 (No autorizado).
-    // Para otros errores, devolvemos un 500 (Error del servidor).
-    const statusCode = message.includes('incorrecta') ? 401 : 500;
-    console.error("Error en UserController.cambiarContrasena:", message);
-    return res.status(statusCode).json({ mensaje: message });
   }
-}
 
- static async obtenerPorCedula(req: CustomRequest, res: Response) {
+  // bloquear  usuario 
+  static async bloquearUsuario(req: CustomRequest, res: Response) {
+    try {
+      const idAdmin = req.user!.id;
+      // --- CAMBIO: Extraer del body ---
+      const { numero_identificacion } = req.body;
+      // --- FIN CAMBIO ---
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      // Validación: Asegurarse de que se envió la identificación
+      if (!numero_identificacion) {
+        return res.status(400).json({ message: 'El campo \'numero_identificacion\' es obligatorio en el cuerpo de la solicitud.' });
+      }
+
+      // Llama al servicio con la identificación y 0 para bloquear
+      const resultado = await cambiarEstadoUsuario(idAdmin, numero_identificacion, 0, ipAddress, userAgent);
+      return res.status(200).json(resultado);
+
+    } catch (error: unknown) {
+      console.error("Error en UserController.bloquearUsuario:", (error as Error).message);
+      const statusCode = error instanceof Error && ['sí mismo', 'no existe', 'bloquear a otro administrador'].some(m => error.message.includes(m)) ? 400 : 500;
+      return res.status(statusCode).json({ message: (error as Error).message || "Error interno del servidor." });
+    }
+  }
+
+  static async desbloquearUsuario(req: CustomRequest, res: Response) {
+    try {
+      const idAdmin = req.user!.id;
+      // --- CAMBIO: Extraer del body ---
+      const { numero_identificacion } = req.body;
+      // --- FIN CAMBIO ---
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      if (!numero_identificacion) {
+        return res.status(400).json({ message: 'El campo \'numero_identificacion\' es obligatorio en el cuerpo de la solicitud.' });
+      }
+
+      // Llama al servicio con la identificación y 1 para desbloquear
+      const resultado = await cambiarEstadoUsuario(idAdmin, numero_identificacion, 1, ipAddress, userAgent);
+      return res.status(200).json(resultado);
+
+    } catch (error: unknown) {
+      console.error("Error en UserController.desbloquearUsuario:", (error as Error).message);
+      const statusCode = error instanceof Error && ['sí mismo', 'no existe'].some(m => error.message.includes(m)) ? 400 : 500;
+      return res.status(statusCode).json({ message: (error as Error).message || "Error interno del servidor." });
+    }
+  }
+
+
+  static async obtenerPorCedula(req: CustomRequest, res: Response) {
     try {
       if (!req.user) { // CORREGIDO: Acceso a req.user para verificar autenticación
         return res.status(401).json({ mensaje: "Usuario no autenticado." });
@@ -267,33 +332,33 @@ export class UserController {
   }
 
   static async obtenerMisNegociosVinculados(req: CustomRequest, res: Response) {
-      try {
-  
-          if (!req.user) {
-          return res.status(401).json({ mensaje: "Usuario no autenticado." });
-        }
-  
-        if (req.user.rolNombre == 'Cliente') {
-          console.warn(`Intento un cliente traer datos de empresas no autorizado: ${req.user.correo} (Rol: ${req.user.rolNombre})`);
-          return res.status(403).json({ mensaje: "Acceso denegado. Solo los colaboradores pueden traer las empresas." });
-        }
-  
-        const idUsuario = req.user.id;
-  
-        if (!idUsuario) {
-          return res.status(403).json({ mensaje: "Token inválido o no contiene la información del usuario." });
-        }
-  
-        const negocios = await obtenerNegociosPorUsuario(idUsuario);
-        res.status(200).json({
-          mensaje: "Negocios vinculados obtenidos exitosamente.",
-          negocios: negocios,
-        });
-  
-      } catch (error: unknown) {
-  
+    try {
+
+      if (!req.user) {
+        return res.status(401).json({ mensaje: "Usuario no autenticado." });
       }
+
+      if (req.user.rolNombre == 'Cliente') {
+        console.warn(`Intento un cliente traer datos de empresas no autorizado: ${req.user.correo} (Rol: ${req.user.rolNombre})`);
+        return res.status(403).json({ mensaje: "Acceso denegado. Solo los colaboradores pueden traer las empresas." });
+      }
+
+      const idUsuario = req.user.id;
+
+      if (!idUsuario) {
+        return res.status(403).json({ mensaje: "Token inválido o no contiene la información del usuario." });
+      }
+
+      const negocios = await obtenerNegociosPorUsuario(idUsuario);
+      res.status(200).json({
+        mensaje: "Negocios vinculados obtenidos exitosamente.",
+        negocios: negocios,
+      });
+
+    } catch (error: unknown) {
+
     }
-  
+  }
+
 
 }
