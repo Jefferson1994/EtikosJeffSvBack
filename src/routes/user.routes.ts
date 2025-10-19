@@ -13,28 +13,27 @@ const limiter = rateLimit({
     legacyHeaders: false,
     skipSuccessfulRequests: true,
 });
-//crear cuenta
-router.post("/createUser", UserController.crear);
-router.post("/verificarCuenta",limiter, UserController.verificarCuenta);// bien terminado
+router.post("/createUser", UserController.crear);//terminada
+router.post("/verificarCuenta",limiter, UserController.verificarCuenta);//terminada
 //login
 router.post("/login",limiter, UserController.LoginPorMail);
-router.post("/validarOtp2Fa",limiter, UserController.verificarLogin2FA);//falta
+router.post("/validarOtp2Fa",limiter, UserController.verificarLogin2FA);//terminada 
 
 // cambiar contraseña
-router.post('/cambiarContrasenia', authenticateJWT, UserController.cambiarContrasena); // ya esta
-router.post('/activarVerificacion2Fa', authenticateJWT, UserController.gestionarVerificacion2FA); // ya revisar bug de activar
+router.post('/cambiarContrasenia', authenticateJWT, UserController.cambiarContrasena); //terminada
+router.post('/activarVerificacion2Fa', authenticateJWT, UserController.gestionarVerificacion2FA); //terminada
 
 // administracion de usuarios
-router.post('/buscar-por-cedula', authenticateJWT, UserController.obtenerPorCedula);// ya esta
-router.post('/bloquearUsuario', authenticateJWT, UserController.bloquearUsuario);// ya esta 
-router.post('/desbloquearUsuario', authenticateJWT, UserController.desbloquearUsuario);// ya esta
+router.post('/buscar-por-cedula', authenticateJWT, UserController.obtenerPorCedula);//terminada
+router.post('/bloquearUsuario', authenticateJWT, UserController.bloquearUsuario);//terminada 
+router.post('/desbloquearUsuario', authenticateJWT, UserController.desbloquearUsuario);//terminada
 
 // recuperación de contraseña
-router.post('/recuperarPasword',limiter , UserController.solicitarRecuperacionContrasenia);// ya esta
-router.post('/resetPasword',limiter , UserController.restablecerContrasena);// ya esta
+router.post('/recuperarPasword',limiter , UserController.solicitarRecuperacionContrasenia);//terminada
+router.post('/resetPasword',limiter , UserController.restablecerContrasena);//terminada
 
 // cerrar sesión
-router.post('/cerrarSesion',authenticateJWT , UserController.cerrarSesion);
+router.post('/cerrarSesion',authenticateJWT , UserController.cerrarSesion);//terminada 
 
 
 
