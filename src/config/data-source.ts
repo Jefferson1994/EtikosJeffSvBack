@@ -52,7 +52,6 @@ export const AppDataSource = new DataSource({
     Otp,
     TipoOtp,
     ParametroSistema,
-    ClienteNoRegistrado,
     ActionType,
     AuditLog
   ],

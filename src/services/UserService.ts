@@ -94,7 +94,7 @@ export const crearUsuario = async (datos: Partial<Usuario>, ipAddress: string | 
       const userPhoneNumber = usuarioGuardado.numero_telefono; // Debes obtener el teléfono del usuario
       const messageBody = `Tu código de verificación para App Jeff es: ${otpCode}`;
       // descomentar para poder enviar sms ahora comentado para no gastar saldo
-      //await sendSms(userPhoneNumber, messageBody);
+      await sendSms(userPhoneNumber, messageBody);
 
       await sendEmail(usuarioGuardado.correo, emailSubject, `Tu código de verificación es: ${otpCode}`, emailHtml);
       console.log(`OTP de verificación de cuenta enviado al nuevo usuario ${usuarioGuardado.correo}`);
@@ -233,7 +233,7 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string, ip
           // 2. Enviar el OTP por correo
           const { emailSubject, emailHtml } = otpVerificaion2Pasos(usuario.nombre, otpCode);
           // descomentar para poder enviar sms ahora comentado para no gastar saldo
-          //await sendSms(usuario.numero_telefono, `Tu código de verificación es: ${otpCode}`);
+          await sendSms(usuario.numero_telefono, `Tu código de verificación es: ${otpCode}`);
           await sendEmail(usuario.correo, emailSubject, `Tu código de verificación es: ${otpCode}`, emailHtml);
 
           // 3. Devolver una respuesta que indique que se requiere el OTP
@@ -814,7 +814,7 @@ export const solicitarRecuperacionContrasena = async (
     // Envía el correo de recuperación
     const { emailSubject, emailHtml } = preparePasswordResetEmail(usuario.nombre, otpCode);
     //descomentar para poder enviar sms ahora comentado para no gastar saldo
-    //await sendSms(usuario.numero_telefono, `Tu código de recuperación e: ${otpCode}`);
+    await sendSms(usuario.numero_telefono, `Tu código de recuperación e: ${otpCode}`);
     await sendEmail(usuario.correo, emailSubject, `Tu código de recuperación es: ${otpCode}`, emailHtml);
 
     // Audita la solicitud exitosa

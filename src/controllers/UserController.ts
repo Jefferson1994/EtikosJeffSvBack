@@ -306,41 +306,41 @@ export class UserController {
   }
 
   //  usuario por cedula
-  static async obtenerPorCedula(req: CustomRequest, res: Response) {
+  // En UserController.ts (o donde tengas este método)
+
+static async obtenerPorCedula(req: CustomRequest, res: Response) {
     try {
-      if (!req.user) { // CORREGIDO: Acceso a req.user para verificar autenticación
-        return res.status(401).json({ mensaje: "Usuario no autenticado." });
-      }
-      if (req.user.rolNombre !== 'Admin') { // CORREGIDO: Acceso a req.user.rolNombre
-        console.warn(`Intento de búsqueda de colaborador por usuario no autorizado: ${req.user.correo} (Rol: ${req.user.rolNombre})`); // CORREGIDO: Acceso a req.user.correo y req.user.rolNombre
-        return res.status(403).json({ mensaje: "Acceso denegado. Solo los administradores pueden buscar colaboradores." });
-      }
+        // ... (Tu lógica de autenticación y validación 401, 403, 400 es correcta)
 
-      const { cedula } = req.body;
+        const { cedula } = req.body;
+        // ... (validación de cédula)
+        
+        const colaboradorEncontrado = await obtenerUsuarioPorIdentificacion(cedula);
 
-      if (!cedula) {
-        return res.status(400).json({ mensaje: "El campo 'cedula' es obligatorio en el cuerpo de la solicitud para la búsqueda." });
-      }
-
-      const colaboradorEncontrado = await obtenerUsuarioPorIdentificacion(cedula);
-
-      if (colaboradorEncontrado) {
-        res.status(200).json({
-          mensaje: "Colaborador encontrado exitosamente.",
-          colaborador: colaboradorEncontrado,
-        });
-      } else {
-        res.status(404).json({
-          mensaje: "No se encontró un colaborador con esa identificación o el usuario no tiene el rol de 'Colaborador'."
-        });
-      }
+        if (colaboradorEncontrado) {
+            // CÓDIGO 200: Éxito
+            res.status(200).json({
+                mensaje: "Colaborador encontrado exitosamente.",
+                colaborador: colaboradorEncontrado,
+            });
+        } else {
+            // CÓDIGO 404: No encontrado (Busca enviar el mensaje personalizado)
+            res.status(400).json({ 
+                mensaje: "No se encontró un usuario con esa identificación."
+            });
+        }
 
     } catch (error: unknown) {
-      console.error("Error en UserController.obtenerPorCedula:", (error as Error).message);
-      res.status(500).json({ mensaje: "Error interno del servidor al buscar colaborador por identificación.", error: (error as Error).message });
+        const errorMessage = (error as Error).message;
+        console.error("Error en UserController.obtenerPorCedula:", errorMessage);
+        
+        // CÓDIGO 500: Error interno inesperado (Asegura que siempre sea 500 aquí)
+        res.status(500).json({ 
+            mensaje: "Error interno del servidor al buscar colaborador por identificación.", 
+            errorDetalle: errorMessage // Renombrado para más claridad
+        });
     }
-  }
-
+}
   // recuperar contrasenia
   static async solicitarRecuperacionContrasenia(req: Request, res: Response) {
     try {

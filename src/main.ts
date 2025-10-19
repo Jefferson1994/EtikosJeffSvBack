@@ -29,7 +29,6 @@ AppDataSource.initialize()
     console.log("configuración base cargada");
 
     app.use("/user", userRoutes);
-    app.use('/api/ciudadanos', cedulaLimiter, ciudadanoRoutes);
 
     app.listen(3000, () => {
       console.log("Servidor corriendo en http://localhost:3000");
