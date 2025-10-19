@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import {
-  crearUsuario, obtenerLoginPorMail, obtenerRolesActivos,
+  crearUsuario, obtenerLoginPorMail,solicitarRecuperacionContrasena,
   obtenerUsuarioPorIdentificacion, validarOtpVerificacionCuenta,
-  validarOtpLogin2FA, cambiarContrasena, cambiarEstadoUsuario
-} from '../services/UserService'; // Importa tus funciones de servicio
-import { AppDataSource } from '../config/data-source'; // Asegúrate de importar AppDataSource
-import { Usuario } from '../entities/Usuario'; // Asegúrate de importar la entidad Usuario
+  validarOtpLogin2FA, cambiarContrasena, cambiarEstadoUsuario,
+  restablecerContrasena,registrarCierreSesion,
+  gestionarEstado2FA
+} from '../services/UserService'; 
+import { Usuario } from '../entities/Usuario'; 
 
 interface CustomRequest extends Request {
   user?: {
@@ -56,7 +57,7 @@ export class UserController {
       delete (usuarioParaRespuesta as any).contrasena;
 
       res.status(201).json({
-        mensaje: "Usuario creado correctamente. Por favor, inicia sesión.",
+        mensaje: "Usuario creado correctamente. Por favor, valide su cuenta.",
         usuario: usuarioParaRespuesta
       });
     } catch (error: unknown) {
@@ -70,13 +71,6 @@ export class UserController {
     }
   }
 
-  /*static async obtenerPorId(req: Request, res: Response) {
-    const id = parseInt( req.body.id);
-    console.log("METODO LISTA ID", id)
-    const usuario = await UsuarioService.obtenerUsuarioPorId(id);
-    if (usuario) res.json(usuario);
-    else res.status(404).json({ mensaje: 'Usuario no encontrado' });
-  }*/
 
   static async LoginPorMail(req: Request, res: Response) {
     try {
@@ -119,27 +113,7 @@ export class UserController {
     }
   }
 
-
-
-  static async RolesActivos(req: Request, res: Response) {
-    try {
-      // Llama al servicio para obtener los roles activos.
-      // El servicio ya contiene la lógica de filtrado y manejo de errores.
-      const roles = await obtenerRolesActivos();
-
-      // Si la operación es exitosa, devuelve la lista de roles activos.
-      res.status(200).json(roles);
-    } catch (error: unknown) {
-      // Captura y registra cualquier error que ocurra en el servicio o durante la petición.
-      console.error("Error en RolController.obtenerActivos:", (error as Error).message);
-      // Devuelve una respuesta de error al cliente.
-      res.status(500).json({
-        mensaje: "Error interno del servidor al obtener roles activos.",
-        error: (error as Error).message,
-      });
-    }
-  }
-
+  
   //verificar cuenta
   static async verificarCuenta(req: Request, res: Response) {
     try {
@@ -244,6 +218,41 @@ export class UserController {
       return res.status(statusCode).json({ mensaje: message });
     }
   }
+  
+  //activar veridicacion 2fa
+  static async gestionarVerificacion2FA(req: Request, res: Response) { // Usa CustomRequest si lo tienes
+    try {
+      // 1. Obtener ID del usuario logueado (desde el token)
+      const idUsuario = (req as any).user.id;
+      // 2. Obtener el nuevo estado desde el body
+      // El frontend debe enviar: { "activar": true } o { "activar": false }
+      const { activar } = req.body; 
+      
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      // 3. Validación
+      if (activar === undefined || typeof activar !== 'boolean') {
+        return res.status(400).json({ message: 'El campo "activar" (true o false) es obligatorio en el cuerpo.' });
+      }
+
+      // 4. Convertir boolean a 1 o 0
+      const nuevoEstado = activar ? 1 : 0; 
+
+      // 5. Llama al nuevo servicio
+      const resultado = await gestionarEstado2FA(idUsuario, nuevoEstado, ipAddress, userAgent);
+      
+      return res.status(200).json(resultado);
+
+    } catch (error: unknown) {
+      // 6. Manejo de errores profesional
+      console.error("Error en UserController.bloquearUsuario:", (error as Error).message);
+      const statusCode = error instanceof Error && ['sí mismo', 'no existe', 'bloquear a otro administrador'].some(m => error.message.includes(m)) ? 400 : 500;
+      return res.status(statusCode).json({ message: (error as Error).message || "Error interno del servidor." });
+    
+  
+    }
+  }
 
   // bloquear  usuario 
   static async bloquearUsuario(req: CustomRequest, res: Response) {
@@ -270,6 +279,7 @@ export class UserController {
       return res.status(statusCode).json({ message: (error as Error).message || "Error interno del servidor." });
     }
   }
+  // desbloquear usuario
 
   static async desbloquearUsuario(req: CustomRequest, res: Response) {
     try {
@@ -295,13 +305,13 @@ export class UserController {
     }
   }
 
-
+  //  usuario por cedula
   static async obtenerPorCedula(req: CustomRequest, res: Response) {
     try {
       if (!req.user) { // CORREGIDO: Acceso a req.user para verificar autenticación
         return res.status(401).json({ mensaje: "Usuario no autenticado." });
       }
-      if (req.user.rolNombre !== 'Administrador') { // CORREGIDO: Acceso a req.user.rolNombre
+      if (req.user.rolNombre !== 'Admin') { // CORREGIDO: Acceso a req.user.rolNombre
         console.warn(`Intento de búsqueda de colaborador por usuario no autorizado: ${req.user.correo} (Rol: ${req.user.rolNombre})`); // CORREGIDO: Acceso a req.user.correo y req.user.rolNombre
         return res.status(403).json({ mensaje: "Acceso denegado. Solo los administradores pueden buscar colaboradores." });
       }
@@ -331,34 +341,100 @@ export class UserController {
     }
   }
 
-  static async obtenerMisNegociosVinculados(req: CustomRequest, res: Response) {
+  // recuperar contrasenia
+  static async solicitarRecuperacionContrasenia(req: Request, res: Response) {
     try {
+      // 1. Extraer datos de la solicitud
+      const { email } = req.body;
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
 
-      if (!req.user) {
-        return res.status(401).json({ mensaje: "Usuario no autenticado." });
+      // 2. Validación simple de entrada
+      if (!email) {
+        return res.status(400).json({ message: 'El correo electrónico es obligatorio.' });
       }
 
-      if (req.user.rolNombre == 'Cliente') {
-        console.warn(`Intento un cliente traer datos de empresas no autorizado: ${req.user.correo} (Rol: ${req.user.rolNombre})`);
-        return res.status(403).json({ mensaje: "Acceso denegado. Solo los colaboradores pueden traer las empresas." });
-      }
+      // 3. Llamar al servicio
 
-      const idUsuario = req.user.id;
+      const response = await solicitarRecuperacionContrasena(email, ipAddress, userAgent);
 
-      if (!idUsuario) {
-        return res.status(403).json({ mensaje: "Token inválido o no contiene la información del usuario." });
-      }
-
-      const negocios = await obtenerNegociosPorUsuario(idUsuario);
-      res.status(200).json({
-        mensaje: "Negocios vinculados obtenidos exitosamente.",
-        negocios: negocios,
-      });
+      return res.status(200).json(response);
 
     } catch (error: unknown) {
-
+      // 5. Manejar errores internos
+      console.error("Error crítico en el controlador solicitarRecuperacion:", (error as Error).message);
+      return res.status(500).json({ 
+        message: (error as Error).message || 'Error interno del servidor.' 
+      });
     }
   }
+
+
+  // validar otp y cambiar contrasenia
+  static async restablecerContrasena(req: Request, res: Response) {
+    try {
+      // 1. Extraer datos de la solicitud
+      const { email, codigoOtp, nuevaContrasena } = req.body;
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      // 2. Validación simple de entrada
+      if (!email || !codigoOtp || !nuevaContrasena) {
+        return res.status(400).json({ 
+          message: 'Se requiere correo electrónico, código OTP y nueva contraseña.' 
+        });
+      }
+
+      const response = await restablecerContrasena(
+        email,
+        codigoOtp,
+        nuevaContrasena,
+        ipAddress,
+        userAgent
+      );
+
+      return res.status(200).json(response);
+
+    } catch (error: unknown) {
+      const errorMessage = (error as Error).message;
+      console.error("Error en controlador restablecerContrasena:", errorMessage);
+
+      if (errorMessage.startsWith('Ocurrió un error al actualizar') || errorMessage.startsWith('Error interno')) {
+        // Error 500 (DB, etc.)
+        return res.status(500).json({ message: errorMessage });
+      }
+      
+      return res.status(400).json({ message: errorMessage });
+    }
+  }
+
+  // cerrar sesión
+  static async cerrarSesion(req: Request, res: Response) {
+    try {
+
+      const idUsuario = (req as any).user.id;
+      const ipAddress = req.ip || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      // 2. Llamar al servicio
+      const response = await registrarCierreSesion(
+        idUsuario,
+        ipAddress,
+        userAgent
+      );
+
+      // 3. Devolver la respuesta de éxito
+      return res.status(200).json(response);
+
+    } catch (error: unknown) {
+      console.error("Error en controlador logout:", (error as Error).message);
+      return res.status(500).json({ 
+        message: (error as Error).message || 'Error interno del servidor.' 
+      });
+    }
+  }
+
+
 
 
 }

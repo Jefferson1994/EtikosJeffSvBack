@@ -192,3 +192,69 @@ export const prepareAccountStatusChangeEmail = (
 };
 
 
+
+export const preparePasswordResetEmail = (userName: string, otpCode: string): { emailSubject: string, emailHtml: string } => {
+  
+  // 2. Obtener valores del ConfigService
+  const appName = ConfigService.get('NOMBRE_APP', 'Tu Aplicación');
+  const teamName = ConfigService.get('NOMBRE_EQUIPO', 'El Equipo de Soporte');
+  const otpMinutes = ConfigService.getNumber('OTP_EXPIRATION_MINUTES', 10);
+
+  const emailSubject = `Restablece tu contraseña  ${appName}`;
+
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+      <h2 style="color: #0056b3; text-align: center;">Solicitud de Restablecimiento de Contraseña</h2>
+      
+      <p>Hola ${userName},</p>
+      
+      <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta en <strong>${appName}</strong>.</p>
+      <p>Usa el siguiente código para completar el proceso. Si no solicitaste esto, puedes ignorar este correo de forma segura.</p>
+      
+      <p style="font-size: 24px; font-weight: bold; color: #007bff; background-color: #f0f8ff; padding: 10px 20px; border-radius: 5px; display: inline-block; margin: 20px 0; text-align: center; letter-spacing: 2px;">
+        ${otpCode}
+      </p>
+
+      <p>Este código es válido por los próximos <strong>${otpMinutes} minutos</strong>.</p>
+      
+      <p style="margin-top: 30px; font-size: 0.9em; color: #777;">Gracias,</p>
+      <p style="font-size: 0.9em; color: #777;">${teamName}</p>
+    </div>
+  `;
+  
+  // 5. Devolver el objeto
+  return { emailSubject, emailHtml };
+};
+
+// En email.service.ts
+export const prepare2FAStatusChangeEmail = (
+  userName: string,
+  isActivating: boolean
+) => {
+  const appName = ConfigService.get('NOMBRE_APP', 'Tu Aplicación');
+  const teamName = ConfigService.get('NOMBRE_EQUIPO', 'El Equipo de Soporte');
+  
+  const actionText = isActivating ? 'ACTIVADO' : 'DESACTIVADO';
+  const titleColor = isActivating ? '#28a745' : '#d9534f'; // Verde / Rojo
+
+  const emailSubject = `[Alerta de Seguridad] 2FA ha sido ${actionText} en ${appName}`;
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; ...">
+      <h2 style="color: ${titleColor};">Autenticación de Dos Pasos (2FA) ${actionText}</h2>
+      <p>Hola ${userName},</p>
+      <p>Te informamos que la autenticación de dos pasos (2FA) ha sido <strong>${actionText}</strong> en tu cuenta.</p>
+      
+      ${!isActivating 
+        ? '<p style="color: #d9534f;"><b>Tu cuenta es ahora menos segura.</b></p>'
+        : '<p style="color: #28a745;"><b>¡Buen trabajo! Tu cuenta está ahora más protegida.</b></p>'
+      }
+      
+      <p>Si no realizaste esta acción, por favor, contacta a soporte inmediatamente.</p>
+      <p>Gracias,</p>
+      <p>${teamName}</p>
+    </div>
+  `;
+  return { emailSubject, emailHtml };
+};
+
+

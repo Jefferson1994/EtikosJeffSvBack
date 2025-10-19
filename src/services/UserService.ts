@@ -7,7 +7,9 @@ import { TipoOtp } from "../entities/TipoOtp";
 import * as dotenv from 'dotenv';
 import * as jwt from 'jsonwebtoken'; 
 import { sendEmail, generateOtp, prepareOtpVerificationEmail,
-   prepareLoginSuccessEmail, otpVerificaion2Pasos,preparePasswordChangedEmail,prepareAccountStatusChangeEmail } from './EmailService'; // Importar el EmailService
+   prepareLoginSuccessEmail, otpVerificaion2Pasos,preparePasswordChangedEmail,
+   prepareAccountStatusChangeEmail,preparePasswordResetEmail, 
+   prepare2FAStatusChangeEmail} from './EmailService'; // Importar el EmailService
 import { Cliente } from "../entities/Cliente";
 import { sendSms } from "./sms.service";
 import { ActionStatus, AuditLog } from "../entities/audit_logs";
@@ -230,6 +232,8 @@ export const obtenerLoginPorMail = async (correo: string, contrasena: string, ip
 
           // 2. Enviar el OTP por correo
           const { emailSubject, emailHtml } = otpVerificaion2Pasos(usuario.nombre, otpCode);
+          // descomentar para poder enviar sms ahora comentado para no gastar saldo
+          //await sendSms(usuario.numero_telefono, `Tu código de verificación es: ${otpCode}`);
           await sendEmail(usuario.correo, emailSubject, `Tu código de verificación es: ${otpCode}`, emailHtml);
 
           // 3. Devolver una respuesta que indique que se requiere el OTP
@@ -481,7 +485,7 @@ export const validarOtpLogin2FA = async (
       token: token,
       twoFactorRequired: false
     };
-  };
+};
 
 // cambiar contrasenia
 export const cambiarContrasena = async (
@@ -566,10 +570,6 @@ export const registrarAuditoria = async (
   };
 
 
-
-
-
-
 export const obtenerUsuarioPorIdentificacion = async (numeroIdentificacion: string): Promise<Partial<Usuario> | null> => {
   if (!numeroIdentificacion) {
     throw new Error("El número de identificación es obligatorio para la búsqueda.");
@@ -586,7 +586,7 @@ export const obtenerUsuarioPorIdentificacion = async (numeroIdentificacion: stri
     }
 
     // Verificar si el rol del usuario es 'Colaborador'
-    if (usuario.rol && (usuario.rol.nombre === 'Cliente' || usuario.rol.nombre === 'Administrador')) {
+    if (usuario.rol && (usuario.rol.nombre === 'Usuario' || usuario.rol.nombre === 'Admin')) {
       const usuarioParaRespuesta: Partial<Usuario> = { ...usuario };
       delete (usuarioParaRespuesta as any).contrasena; // No devolver la contraseña
       return usuarioParaRespuesta;
@@ -598,6 +598,70 @@ export const obtenerUsuarioPorIdentificacion = async (numeroIdentificacion: stri
     console.error("Error en obtenerUsuarioPorIdentificacion:", (error as Error).message);
     throw new Error("Ocurrió un error al buscar el usuario por identificación.");
   }
+};
+
+// Activar doble factor 
+export const gestionarEstado2FA = async (
+  idUsuarioLogueado: number,
+  nuevoEstado2FA: number, // 1 para activar, 0 para desactivar
+  ipAddress: string | null,
+  userAgent: string | null
+): Promise<{ success: boolean; message: string }> => {
+
+  const usuarioRepository = AppDataSource.getRepository(Usuario);
+  
+  // 1. Buscar al usuario
+  const usuario = await usuarioRepository.findOne({ 
+    where: { id: idUsuarioLogueado }
+  });
+
+  if (!usuario) {
+    // Esto no debería pasar si el token JWT es válido
+    throw new Error('Usuario no encontrado.'); 
+  }
+
+  // 2. Comprobar si ya está en ese estado
+  if (usuario.autenticacion_dos_pasos_activa === nuevoEstado2FA) {
+    const estadoActualStr = nuevoEstado2FA === 1 ? 'activada' : 'desactivada';
+    return { success: true, message: `La autenticación de dos pasos ya se encuentra ${estadoActualStr}.` };
+  }
+
+  // 3. Actualizar el estado
+  usuario.autenticacion_dos_pasos_activa = nuevoEstado2FA;
+  await usuarioRepository.save(usuario);
+
+  // 4. Preparar datos para auditoría y notificación
+  const isActivating = nuevoEstado2FA === 1;
+  const actionName = isActivating ? '2FA_ACTIVATED' : '2FA_DEACTIVATED';
+  const actionVerb = isActivating ? 'activada' : 'desactivada';
+  const details = `El usuario (ID: ${usuario.id}) ha ${actionVerb} su 2FA.`;
+
+  // 5. Registrar auditoría
+  await registrarAuditoria(
+    AppDataSource.manager,
+    actionName,
+    idUsuarioLogueado,
+    ipAddress,
+    userAgent,
+    ActionStatus.SUCCESS,
+    details,
+    idUsuarioLogueado // El objetivo es él mismo
+  );
+
+  // 6. Enviar notificación por correo
+  try {
+    const { emailSubject, emailHtml } = prepare2FAStatusChangeEmail(
+      usuario.nombre, 
+      isActivating
+    );
+    await sendEmail(usuario.correo, emailSubject, `Tu 2FA ha sido ${actionVerb}.`, emailHtml);
+  } catch (emailError) {
+    console.error(`ERROR AL ENVIAR CORREO de notificación 2FA para ${usuario.correo}:`, emailError);
+    // No fallamos la operación solo por el email, pero lo logueamos.
+  }
+
+  const message = `La autenticación de dos pasos ha sido ${actionVerb} exitosamente.`;
+  return { success: true, message };
 };
 
 
@@ -683,4 +747,250 @@ export const cambiarEstadoUsuario = async (
 
   const message = `El usuario ha sido ${actionVerb} exitosamente.`;
   return { success: true, message };
+};
+
+// recuperar contrasenia 
+export const solicitarRecuperacionContrasena = async (
+  correo: string,
+  ipAddress: string | null,
+  userAgent: string | null
+): Promise<{ success: boolean; message: string }> => {
+  
+  const usuarioRepository = AppDataSource.getRepository(Usuario);
+  const otpRepository = AppDataSource.getRepository(Otp);
+  const tipoOtpRepository = AppDataSource.getRepository(TipoOtp);
+
+  const usuario = await usuarioRepository.findOne({ where: { correo: correo } });
+
+  // Mensaje genérico de éxito. Se devuelve SIEMPRE,
+  const genericSuccessMessage = 'Si tu correo electrónico está registrado, recibirás un código de recuperación.';
+
+  if (!usuario) {
+    // si no exite el usuario, auditar el intento fallido
+    await registrarAuditoria(
+      AppDataSource.manager,
+      'PASSWORD_RESET_ATTEMPT_FAILED', 
+      null, 
+      ipAddress,
+      userAgent,
+      ActionStatus.FAILURE,
+      `Intento de recuperación para correo no existente: ${correo}`,
+      null
+    );
+    
+    return { success: true, message: genericSuccessMessage };
+  }
+
+  // --- El usuario SÍ existe ---
+  try {
+    
+    const tipoReset = await tipoOtpRepository.findOne({ 
+      where: { nombre: 'PASSWORD_RESET' } // El que acabas de crear (ID 3)
+    });
+
+    if (!tipoReset) {
+      //por si no existe el tipo otp
+      console.error('Error de configuración: El tipo de OTP "PASSWORD_RESET" no existe.');
+      throw new Error('Error interno al procesar la solicitud.');
+    }
+
+    //  Genera el código y la expiración desde ConfigService
+    const otpLength = ConfigService.getNumber('OTP_LENGTH', 6);
+    const otpCode = generateOtp(otpLength);
+    
+    const otpMinutes = ConfigService.getNumber('OTP_EXPIRATION_MINUTES', 10);
+    const otpExpiresAt = new Date(Date.now() + otpMinutes * 60 * 1000);
+
+    // 3. Guarda el nuevo OTP
+    const newOtp = otpRepository.create({
+      id_usuario: usuario.id,
+      id_tipo_otp: tipoReset.id,
+      codigo: otpCode,
+      expira_en: otpExpiresAt,
+      usado: false,
+    });
+    await otpRepository.save(newOtp);
+
+    // Envía el correo de recuperación
+    const { emailSubject, emailHtml } = preparePasswordResetEmail(usuario.nombre, otpCode);
+    //descomentar para poder enviar sms ahora comentado para no gastar saldo
+    //await sendSms(usuario.numero_telefono, `Tu código de recuperación e: ${otpCode}`);
+    await sendEmail(usuario.correo, emailSubject, `Tu código de recuperación es: ${otpCode}`, emailHtml);
+
+    // Audita la solicitud exitosa
+    await registrarAuditoria(
+      AppDataSource.manager,
+      'PASSWORD_RESET_REQUEST', 
+      usuario.id,
+      ipAddress,
+      userAgent,
+      ActionStatus.SUCCESS,
+      'Solicitud de recuperación de contraseña generada exitosamente.',
+      null
+    );
+
+    return { success: true, message: genericSuccessMessage };
+
+  } catch (error: unknown) {
+    console.error("Error en solicitarRecuperacionContrasena:", (error as Error).message);
+    
+    // Audita el fallo interno
+    await registrarAuditoria(
+      AppDataSource.manager,
+      'PASSWORD_RESET_ATTEMPT_FAILED',
+      usuario.id,
+      ipAddress,
+      userAgent,
+      ActionStatus.FAILURE,
+      `Error al procesar solicitud de reseteo: ${(error as Error).message}`,
+      null
+    );
+    // Devuelve un error genérico al usuario
+    throw new Error('Ocurrió un error al procesar tu solicitud. Inténtalo más tarde.');
+  }
+};
+
+// cambiar contrasenia con otp validado
+
+export const restablecerContrasena = async (
+  correo: string,
+  codigoOtp: string,
+  nuevaContrasena: string, 
+  ipAddress: string | null,
+  userAgent: string | null
+): Promise<{ success: boolean; message: string }> => { 
+
+  const usuarioRepository = AppDataSource.getRepository(Usuario);
+  const otpRepository = AppDataSource.getRepository(Otp);
+
+  // 1. Buscar al usuario por su correo
+  const usuario = await usuarioRepository.findOne({ where: { correo } });
+  if (!usuario) {
+    await registrarAuditoria(AppDataSource.manager, 
+      'PASSWORD_UPDATE_FAILED', 
+      null,
+      ipAddress, 
+      userAgent, 
+      ActionStatus.FAILURE, 
+      `Intento de reseteo para correo no existente: ${correo}`, 
+      null);
+    throw new Error('El correo electrónico no se encuentra registrado.');
+  }
+
+  // 2. Buscar el OTP más reciente, no usado y del tipo PASSWORD_RESET
+  const otpEncontrado = await otpRepository.findOne({
+    where: {
+      id_usuario: usuario.id,
+      usado: false,
+      tipoOtp: { nombre: 'PASSWORD_RESET' } // <-- TIPO DE OTP CORRECTO
+    },
+    relations: ['tipoOtp'],
+    order: { creado_en: 'DESC' }
+  });
+
+  if (!otpEncontrado) {
+    await registrarAuditoria(AppDataSource.manager, 
+      'PASSWORD_UPDATE_FAILED', 
+      usuario.id,
+      ipAddress, 
+      userAgent, 
+      ActionStatus.FAILURE, `Intento de reseteo fallido para ${correo} (no se encontró OTP pendiente).`, 
+      null);
+    throw new Error('No se encontró un código de recuperación válido. Por favor, solicita uno nuevo.');
+  }
+
+  // 3. Verificar si el OTP ha expirado
+  if (new Date() > otpEncontrado.expira_en) {
+    otpEncontrado.usado = true; // Marcar como usado para invalidarlo
+    await otpRepository.save(otpEncontrado);
+    await registrarAuditoria(AppDataSource.manager, 
+      'PASSWORD_UPDATE_FAILED',
+       usuario.id,
+      ipAddress, 
+      userAgent, 
+      ActionStatus.FAILURE, `Intento de reseteo fallido para ${correo} (OTP expirado).`, 
+      null);
+    throw new Error('El código de recuperación ha expirado. Por favor, solicita uno nuevo.');
+  }
+
+  // 4. Verificar si el código coincide
+  if (otpEncontrado.codigo !== codigoOtp) {
+    await registrarAuditoria(AppDataSource.manager,
+       'PASSWORD_UPDATE_FAILED',
+        usuario.id, ipAddress,
+      userAgent, 
+      ActionStatus.FAILURE, 
+      `Intento de reseteo fallido para ${correo} (OTP incorrecto).`,
+       null);
+    throw new Error('El código de recuperación es incorrecto.');
+  }
+
+  // 5. ptp bien cambio de contraseña
+  try {
+    await AppDataSource.manager.transaction(async (transactionalEntityManager) => {
+      otpEncontrado.usado = true;
+      await transactionalEntityManager.save(Otp, otpEncontrado);
+
+      const saltRounds = ConfigService.getNumber('BCRYPT_SALT_ROUNDS', 10);
+      const hashedNewPassword = await bcrypt.hash(nuevaContrasena, saltRounds);
+      
+      usuario.contrasena = hashedNewPassword;
+      await transactionalEntityManager.save(Usuario, usuario);
+
+      await registrarAuditoria(
+        transactionalEntityManager, 
+        'PASSWORD_UPDATED', 
+        usuario.id, 
+        ipAddress,
+        userAgent, 
+        ActionStatus.SUCCESS, 
+        'Contraseña restablecida exitosamente vía OTP.',
+        null
+      );
+    });
+
+    const { emailSubject, emailHtml } = preparePasswordChangedEmail(usuario.nombre);
+    await sendEmail(usuario.correo, emailSubject, '', emailHtml);
+
+    return { success: true, message: 'Tu contraseña ha sido restablecida exitosamente.' };
+
+  } catch (error: unknown) {
+    
+    console.error("Error en la transacción de reseteo:", (error as Error).message);
+    await registrarAuditoria(AppDataSource.manager,
+      'PASSWORD_UPDATE_FAILED', 
+      usuario.id,
+      ipAddress,
+      userAgent, 
+      ActionStatus.FAILURE, `Error de DB al resetear contraseña: ${(error as Error).message}`,
+      null);
+    throw new Error('Ocurrió un error al actualizar tu contraseña. Inténtalo de nuevo.');
+  }
+};
+
+// cerras sesión
+export const registrarCierreSesion = async (
+  idUsuario: number, // ID del usuario (obtenido del token JWT)
+  ipAddress: string | null,
+  userAgent: string | null
+): Promise<{ success: boolean; message: string }> => {
+  
+  try {
+    await registrarAuditoria(
+      AppDataSource.manager, 
+      'LOGOUT', 
+      idUsuario, 
+      ipAddress,
+      userAgent, 
+      ActionStatus.SUCCESS, 
+      'Cierre de sesión voluntario del usuario.',
+      null
+    );
+
+    return { success: true, message: 'Cierre de sesión registrado.' };
+
+  } catch (error: unknown) {
+    console.error("Error al registrar cierre de sesión:", (error as Error).message);
+    return { success: false, message: 'Error al registrar el cierre de sesión.' };
+  }
 };
