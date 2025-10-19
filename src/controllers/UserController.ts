@@ -60,7 +60,7 @@ export class UserController {
         mensaje: "Usuario creado correctamente. Por favor, valide su cuenta.",
         usuario: usuarioParaRespuesta
       });
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error("Error creando usuario:", (error as Error).message);
 
       // CORREGIDO: Eliminar la lógica duplicada para errores de unicidad
@@ -108,7 +108,7 @@ export class UserController {
       } else {
         res.status(401).json({ message: 'Credenciales inválidas' });
       }
-    } catch (error: unknown) {
+    } catch (error: any) {
       // ... error handling ...
     }
   }
@@ -140,7 +140,7 @@ export class UserController {
           message: resultado.message
         });
       }
-    } catch (error: unknown) {
+    } catch (error: any) {
       // Manejo de errores inesperados
       console.error("Error en el controlador de verificación de cuenta:", error);
       return res.status(500).json({ message: "Error interno del servidor." });
@@ -177,7 +177,7 @@ export class UserController {
         // Usamos 401 Unauthorized porque es un fallo de autenticación.
         return res.status(401).json({ message: 'El código de verificación es inválido o ha expirado.' });
       }
-    } catch (error: unknown) {
+    } catch (error: any) {
       // Manejo de errores inesperados (ej. la base de datos se cae)
       console.error("Error en el controlador de verificación 2FA:", error);
       return res.status(500).json({ message: "Error interno del servidor." });
@@ -209,7 +209,7 @@ export class UserController {
       // 5. Devuelve una respuesta exitosa.
       return res.status(200).json(resultado);
 
-    } catch (error: unknown) {
+    } catch (error: any) {
       const message = (error as Error).message;
       // Si el error es por contraseña incorrecta, devolvemos un 401 (No autorizado).
       // Para otros errores, devolvemos un 500 (Error del servidor).
@@ -244,7 +244,7 @@ export class UserController {
       
       return res.status(200).json(resultado);
 
-    } catch (error: unknown) {
+    } catch (error: any) {
       // 6. Manejo de errores profesional
       console.error("Error en UserController.bloquearUsuario:", (error as Error).message);
       const statusCode = error instanceof Error && ['sí mismo', 'no existe', 'bloquear a otro administrador'].some(m => error.message.includes(m)) ? 400 : 500;
@@ -273,7 +273,7 @@ export class UserController {
       const resultado = await cambiarEstadoUsuario(idAdmin, numero_identificacion, 0, ipAddress, userAgent);
       return res.status(200).json(resultado);
 
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error("Error en UserController.bloquearUsuario:", (error as Error).message);
       const statusCode = error instanceof Error && ['sí mismo', 'no existe', 'bloquear a otro administrador'].some(m => error.message.includes(m)) ? 400 : 500;
       return res.status(statusCode).json({ message: (error as Error).message || "Error interno del servidor." });
@@ -298,7 +298,7 @@ export class UserController {
       const resultado = await cambiarEstadoUsuario(idAdmin, numero_identificacion, 1, ipAddress, userAgent);
       return res.status(200).json(resultado);
 
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error("Error en UserController.desbloquearUsuario:", (error as Error).message);
       const statusCode = error instanceof Error && ['sí mismo', 'no existe'].some(m => error.message.includes(m)) ? 400 : 500;
       return res.status(statusCode).json({ message: (error as Error).message || "Error interno del servidor." });
@@ -330,7 +330,7 @@ static async obtenerPorCedula(req: CustomRequest, res: Response) {
             });
         }
 
-    } catch (error: unknown) {
+    } catch (error: any) {
         const errorMessage = (error as Error).message;
         console.error("Error en UserController.obtenerPorCedula:", errorMessage);
         
@@ -426,7 +426,7 @@ static async obtenerPorCedula(req: CustomRequest, res: Response) {
       // 3. Devolver la respuesta de éxito
       return res.status(200).json(response);
 
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error("Error en controlador logout:", (error as Error).message);
       return res.status(500).json({ 
         message: (error as Error).message || 'Error interno del servidor.' 
