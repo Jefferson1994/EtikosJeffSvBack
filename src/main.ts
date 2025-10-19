@@ -3,7 +3,6 @@ import "reflect-metadata";
 import { AppDataSource } from "./config/data-source";
 import userRoutes from "./routes/user.routes";
 import cors from "cors";
-import ciudadanoRoutes from './routes/ciudadano.routes';
 import rateLimit from 'express-rate-limit';
 import { ConfigService } from "./services/config.service";
 
