@@ -5,7 +5,6 @@ import { Rol } from '../entities/Rol';
 import { Otp } from '../entities/Otp';
 import { TipoOtp } from '../entities/TipoOtp';
 import {ParametroSistema } from '../entities/ParametrosSistema'
-import { ClienteNoRegistrado } from '../entities/ClienteNoRegistrado';
 import { ActionType } from '../entities/action_types';
 import { AuditLog } from '../entities/audit_logs';
 
