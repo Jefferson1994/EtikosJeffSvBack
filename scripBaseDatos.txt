@@ -1,0 +1,46 @@
+
+SET IDENTITY_INSERT [dbo].[action_types] ON 
+
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (1, N'LOGIN_SUCCESS', N'Inicio de sesión exitoso.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (2, N'LOGIN_FAILED', N'Intento de inicio de sesión fallido (contraseña incorrecta).', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (3, N'LOGOUT', N'Cierre de sesión voluntario.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (4, N'PASSWORD_UPDATED', N'Modificación de credenciales.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (5, N'PASSWORD_RESET_REQUEST', N'Solicitud de recuperación de acceso.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (6, N'USER_REGISTERED', N'Registro de un nuevo usuario.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (7, N'USER_BLOCKED', N'Bloqueo de un usuario por un administrador.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (8, N'USER_UNBLOCKED', N'Desbloqueo de un usuario.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (9, N'OTP_GENERATED', N'Generación de un código OTP para un usuario.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (10, N'LOGIN_FAILED_LOCKED', N'Login fallido usuario bloqueado', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (11, N'LOGIN_FAILED_UNVERIFIED', N'Login fallido cuenta no verificada.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (12, N'PASSWORD_RESET_ATTEMPT_FAILED', N'No se pudo recuperar la contrasenia', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (13, N'PASSWORD_UPDATE_FAILED', N'No se pudo actualizar  la contrasenia con otp', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (14, N'2FA_ACTIVATED', N'Usuario activó la verificación de dos pasos.', 1)
+INSERT [dbo].[action_types] ([id], [nombre], [descripcion], [activo]) VALUES (15, N'2FA_DEACTIVATED', N'Usuario desactivó la verificación de dos pasos.', 1)
+SET IDENTITY_INSERT [dbo].[action_types] OFF
+GO
+SET IDENTITY_INSERT [dbo].[parametros_sistema] ON 
+
+INSERT [dbo].[parametros_sistema] ([id], [nombre], [valor_desarrollo], [valor_produccion], [descripcion], [activo], [creado_en], [actualizado_en]) VALUES (1, N'NOMBRE_APP', N'App Control Etikos (Dev)', N'App Control Etikos', N'Nombre oficial de la app para emails y títulos.', 1, CAST(N'2025-10-17T19:46:51.1166667' AS DateTime2), CAST(N'2025-10-17T19:46:51.1166667' AS DateTime2))
+INSERT [dbo].[parametros_sistema] ([id], [nombre], [valor_desarrollo], [valor_produccion], [descripcion], [activo], [creado_en], [actualizado_en]) VALUES (2, N'NOMBRE_EQUIPO', N'Equipo de Soporte (Dev)', N'El Equipo de App Control Etikos', N'Nombre del equipo remitente en correos.', 1, CAST(N'2025-10-17T19:46:51.1166667' AS DateTime2), CAST(N'2025-10-17T19:46:51.1166667' AS DateTime2))
+INSERT [dbo].[parametros_sistema] ([id], [nombre], [valor_desarrollo], [valor_produccion], [descripcion], [activo], [creado_en], [actualizado_en]) VALUES (3, N'JWT_EXPIRATION', N'8h', N'2h', N'Duración del token JWT antes de expirar. (Prod. más corto por seguridad)', 1, CAST(N'2025-10-17T19:46:51.1233333' AS DateTime2), CAST(N'2025-10-17T19:46:51.1233333' AS DateTime2))
+INSERT [dbo].[parametros_sistema] ([id], [nombre], [valor_desarrollo], [valor_produccion], [descripcion], [activo], [creado_en], [actualizado_en]) VALUES (4, N'LOGIN_MAX_FAILED_ATTEMPTS', N'10', N'5', N'N° de intentos fallidos antes de bloquear la cuenta un usuario.', 1, CAST(N'2025-10-17T19:46:51.1233333' AS DateTime2), CAST(N'2025-10-17T19:46:51.1233333' AS DateTime2))
+INSERT [dbo].[parametros_sistema] ([id], [nombre], [valor_desarrollo], [valor_produccion], [descripcion], [activo], [creado_en], [actualizado_en]) VALUES (5, N'LOGIN_LOCKOUT_MINUTES', N'1', N'15', N'Minutos que una cuenta permanece bloqueada por intentos fallidos. (1 en dev para pruebas)', 1, CAST(N'2025-10-17T19:46:51.1233333' AS DateTime2), CAST(N'2025-10-17T19:46:51.1233333' AS DateTime2))
+INSERT [dbo].[parametros_sistema] ([id], [nombre], [valor_desarrollo], [valor_produccion], [descripcion], [activo], [creado_en], [actualizado_en]) VALUES (6, N'OTP_EXPIRATION_MINUTES', N'15', N'10', N'Minutos de validez de un código OTP (registro, 2FA, recuperación).', 1, CAST(N'2025-10-17T19:46:51.1266667' AS DateTime2), CAST(N'2025-10-17T19:46:51.1266667' AS DateTime2))
+INSERT [dbo].[parametros_sistema] ([id], [nombre], [valor_desarrollo], [valor_produccion], [descripcion], [activo], [creado_en], [actualizado_en]) VALUES (7, N'MFA_ENABLED_BY_DEFAULT', N'0', N'0', N'Forzar 2FA para nuevos usuarios (0=No, 1=Sí). Permite al usuario elegir.', 1, CAST(N'2025-10-17T19:46:51.1266667' AS DateTime2), CAST(N'2025-10-17T19:46:51.1266667' AS DateTime2))
+INSERT [dbo].[parametros_sistema] ([id], [nombre], [valor_desarrollo], [valor_produccion], [descripcion], [activo], [creado_en], [actualizado_en]) VALUES (8, N'OTP_LENGTH', N'6', N'6', N'Longitud de los códigos OTP generados por el sistema.', 1, CAST(N'2025-10-17T20:06:57.4366667' AS DateTime2), CAST(N'2025-10-17T20:06:57.4366667' AS DateTime2))
+SET IDENTITY_INSERT [dbo].[parametros_sistema] OFF
+GO
+SET IDENTITY_INSERT [dbo].[roles] ON 
+
+INSERT [dbo].[roles] ([id], [nombre], [descripcion], [activo], [visible_registro]) VALUES (1, N'Usuario', N'Rol para usuarios estándar de la aplicación.', 1, 1)
+INSERT [dbo].[roles] ([id], [nombre], [descripcion], [activo], [visible_registro]) VALUES (2, N'Admin', N'Rol con permisos totales de administrador.', 1, 1)
+SET IDENTITY_INSERT [dbo].[roles] OFF
+GO
+
+SET IDENTITY_INSERT [dbo].[tipos_otp] ON 
+
+INSERT [dbo].[tipos_otp] ([id], [nombre], [descripcion], [activo]) VALUES (1, N'VERIFICACION_CUENTA', N'Verificación de cuenta de usuario', 1)
+INSERT [dbo].[tipos_otp] ([id], [nombre], [descripcion], [activo]) VALUES (2, N'LOGIN_2FA', N'Código OTP para autenticación de dos pasos al iniciar sesión.', 1)
+INSERT [dbo].[tipos_otp] ([id], [nombre], [descripcion], [activo]) VALUES (3, N'PASSWORD_RESET', N'OTP para el flujo de recuperación de contraseña.', 1)
+SET IDENTITY_INSERT [dbo].[tipos_otp] OFF
+GO
