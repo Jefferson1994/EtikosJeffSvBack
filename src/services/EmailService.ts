@@ -37,11 +37,17 @@ export const sendEmail = async (to: string, subject: string, text: string, html?
 
     console.log('Mensaje de correo enviado con éxito: %s', info.messageId);
     console.log('URL de vista previa del mensaje (solo para desarrollo): %s', nodemailer.getTestMessageUrl(info));
-    return info;
+    return { 
+            success: true, 
+            message: `Correo enviado. ID: ${info.messageId}`,
+        };
   } catch (error: unknown) {
     console.error("Error al enviar correo electrónico:", (error as Error).message);
     // Relanzar el error para que el llamador pueda manejarlo adecuadamente.
-    throw new Error(`Fallo al enviar el correo: ${(error as Error).message}`);
+    return { 
+            success: false, 
+            message: 'Fallo al enviar el correo. Ver detalles en logs.'
+    };
   }
 };
 
