@@ -77,4 +77,4 @@ Arquitectura General del sistema
 
 Arquitectura del Backend 
 
-![Diagrama de Arquitectura del Backend](./docs/CleanArquitecture.png)
+![Diagrama de Arquitectura del Backend](./docs/ArquitecturaNCapas.png)
