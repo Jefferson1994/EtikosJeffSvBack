@@ -75,6 +75,6 @@ Arquitectura General del sistema
 ![Diagrama de Arquitectura del Sistema](./docs/ArquitecturaGeneral.png)
 
 
-Arquitectura del Backend 
+Arquitectura del Backend N Capas
 
 ![Diagrama de Arquitectura del Backend](./docs/ArquitecturaNCapas.png)
