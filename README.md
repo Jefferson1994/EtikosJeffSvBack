@@ -25,20 +25,23 @@ Siga estos pasos para levantar el proyecto en un entorno de desarrollo.
 * Tener una instancia de MySQL/SQL Server corriendo localmente.
 
 ---
+### 1. Clonar el proyecto
+1. git clone https://github.com/Jefferson1994/EtikosJeffSvBack.git
 
-### 1. Configuración de la Base de Datos en servidor smarterasp.net
+
+### 2. Configuración de la Base de Datos en servidor smarterasp.net
 
 1.  El codigo esta configurado para arrancar con esta base caso de usar una base local cambie la cadena de
 conexion en el archivo \src\config\data-source.ts
 
-### 2. Configuración de la Base de Datos Local
+### 3. Configuración de la Base de Datos Local
 
 1.  Cree una base de datos vacía en su gestor local (ej. `bdappjeffetikos`).
 2.  Ejecute el backend por primera vez (paso 3). TypeORM creará la estructura de tablas automáticamente.
 3.  Abrir el archivo `scripBaseDatos.txt` y copie el script y ejecute en su base para poblar las tablas de configuración (roles, tipos de OTP, etc.) 
 ---
 
-### 2. Variables de Entorno
+### 4. Variables de Entorno
 
 1.  Enviare un archivo `.env`de ejemplo con cuentas de prueba caso contrario usar cuentas propias 
 2.  El archivo enviado coloquelo en la raiz del proyecto, el archivo `.env` contendra las variables requeridas
@@ -47,7 +50,7 @@ conexion en el archivo \src\config\data-source.ts
 
 ---
 
-### 3. Instalación y Ejecución
+### 5. Instalación y Ejecución
 
 1.  Abra una terminal en la raíz de este proyecto.
 2.  Instale las dependencias:
@@ -59,7 +62,7 @@ conexion en el archivo \src\config\data-source.ts
 
 ---
 
-### 4. Credenciales de Prueba (Admin)
+### 6. Credenciales de Prueba (Admin)
 
 Para probar la funcionalidad de administrador se habilita un menu que solo podra ver el admin con las funcionalidades bloquear/desbloquear usuarios donde primero busca por cedula que se registro en la plataforma y procede a ver informacion del usuario y  el estado y la opcion de acuerdo al caso, use las siguientes credenciales:
 
@@ -68,7 +71,7 @@ Para probar la funcionalidad de administrador se habilita un menu que solo podra
 
 ---
 
-### 5. Arquitectura 
+### 7. Arquitectura 
 
 Arquitectura General del sistema 
 
