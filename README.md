@@ -58,12 +58,14 @@ conexion en el archivo \src\config\data-source.ts
 
 3.  Inicie el servidor en modo de desarrollo:
  
-    npm run start:dev
-
-    3.1. **El servidor fallará.** Deténgalo y vaya al paso **4. Variables de Entorno**.
-    3.2. Vuelva a ejecutar:
-  
-    npm run start:dev
+        ```bash
+        npm run start:dev
+        ```
+        3.1. **El servidor fallará.** Deténgalo y vaya al paso **4. Variables de Entorno**.
+        3.2. Vuelva a ejecutar:
+        ```bash
+        npm run start:dev
+        ```
   
 4.  El servidor estará corriendo en `http://localhost:3000`.
 
