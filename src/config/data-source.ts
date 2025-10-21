@@ -14,9 +14,9 @@ import { AuditLog } from '../entities/audit_logs';
   type: 'mssql',
   host: 'localhost', 
   port: 1433,
-  username: 'sa',
-  password: 'admin',
-  database: 'BdAppControlFinancieroBaberia',
+  username: 'sa',//cambie a credenciales locales
+  password: 'admin',//cambie a credenciales locales
+  database: 'bdappjeffetikos',
   synchronize:  true,
   logging:  false,
    entities: [
