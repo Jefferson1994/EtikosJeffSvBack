@@ -12,20 +12,22 @@ import { AuditLog } from '../entities/audit_logs';
 //cadeana local
 /*export const AppDataSource = new DataSource({
   type: 'mssql',
-  host: 'localhost', // o LAPTOP-UA0JFMK2
+  host: 'localhost', 
   port: 1433,
   username: 'sa',
   password: 'admin',
   database: 'BdAppControlFinancieroBaberia',
   synchronize:  true,
   logging:  false,
-  entities: [Usuario, Caja, Cliente, DetalleFactura,Colaborador,Factura,
-    MetodoPago,MovimientoCaja,Negocio,Producto,Servicio,Rol,Otp,TipoOtp,
-    TipoEmpresa,DatosContactoEmpresa,TipoProducto,TipoServicio,TipoMovimientoCaja,
-    Venta,DetalleVenta,ParametroSistema,ComprobanteCounter,Reserva,EstadoReserva,
-    ImagenEmpresa,ImagenProducto,ImagenServicio,ClienteNoRegistrado,Suscripcion,
-    TipoPlan,EstadoSuscripcion
-
+   entities: [
+    Usuario,
+    Cliente,
+    Rol,
+    Otp,
+    TipoOtp,
+    ParametroSistema,
+    ActionType,
+    AuditLog
   ],
   options: {
     encrypt: false,
@@ -54,12 +56,12 @@ export const AppDataSource = new DataSource({
     ActionType,
     AuditLog
   ],
-  synchronize: true, // ¡PRECAUCIÓN! Ideal para desarrollo, puede borrar datos en producción.
-  logging: false,    // Poner en 'true' para depurar consultas SQL.
+  synchronize: true, // ¡PRECAUCIÓN!, puede borrar datos en producción.
+  logging: false,    // 'true' para depurar consultas SQL.
 
-  // --- Opciones de Conexión (Importante para Hosting) ---
+  
   options: {
-    encrypt: true, // Esencial para la mayoría de los proveedores de bases de datos en la nube.
-    trustServerCertificate: true, // Permite la conexión sin verificar el certificado del servidor.
+    encrypt: true, 
+    trustServerCertificate: true, 
   },
 });
