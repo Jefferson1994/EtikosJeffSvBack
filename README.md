@@ -37,7 +37,7 @@ conexion en el archivo \src\config\data-source.ts
 ### 3. Configuración de la Base de Datos Local
 
 1.  Cree una base de datos vacía en su gestor local (ej. `bdappjeffetikos`).
-2.  Ejecute el backend por primera vez (paso 3). TypeORM creará la estructura de tablas automáticamente.
+2.  Ejecute el backend por primera vez (paso 5). TypeORM creará la estructura de tablas automáticamente.
 3.  Abrir el archivo `scripBaseDatos.txt` y copie el script y ejecute en su base para poblar las tablas de configuración (roles, tipos de OTP, etc.) 
 ---
 
