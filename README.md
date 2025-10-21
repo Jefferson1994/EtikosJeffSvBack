@@ -9,7 +9,7 @@ Azuayo. Implementa un sistema de autenticación robusto con 2FA, JWT, gestión d
 * TypeORM
 * MySQL 
 * Twilio
-* Nodemailer (con Gmail)
+* Gmail
 * JWT (JSON Web Tokens)
 * Bcrypt
 
@@ -29,7 +29,7 @@ Siga estos pasos para levantar el proyecto en un entorno de desarrollo.
 ### 1. Configuración de la Base de Datos en servidor smarterasp.net
 
 1.  El codigo esta configurado para arrancar con esta base caso de usar una base local cambie la cadena de
-conexion en el archivo data-source.ts
+conexion en el archivo \src\config\data-source.ts
 
 ### 2. Configuración de la Base de Datos Local
 
