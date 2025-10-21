@@ -62,6 +62,7 @@ conexion en el archivo \src\config\data-source.ts
         npm run start:dev
         ```
         3.1. **El servidor fallará.** Deténgalo y vaya al paso **4. Variables de Entorno**.
+        (si esta usando una base local no se olvide de ejecutar el contendio del archivo scripBaseDatos.txt )
         3.2. Vuelva a ejecutar:
         ```bash
         npm run start:dev
