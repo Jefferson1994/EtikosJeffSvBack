@@ -44,3 +44,12 @@ INSERT [dbo].[tipos_otp] ([id], [nombre], [descripcion], [activo]) VALUES (2, N'
 INSERT [dbo].[tipos_otp] ([id], [nombre], [descripcion], [activo]) VALUES (3, N'PASSWORD_RESET', N'OTP para el flujo de recuperación de contraseña.', 1)
 SET IDENTITY_INSERT [dbo].[tipos_otp] OFF
 GO
+
+INSERT INTO usuarios (
+  nombre,correo,contrasena,id_rol,numero_telefono,numero_identificacion,
+  creado_en,activo,autenticacion_dos_pasos_activa,esta_verificado
+)
+VALUES ('Admin Etikos Jarndi Azuayo','pruebaEtikos1@outlook.com','$2b$10$1BR/txDcZMXHL9Zc5xeMquAIeq21EYvmI5NyaRkYVMUuuUOIQWr9K',
+  2,'+593989638031','0123654988','2025-10-20 17:25:18.3033333',1,0,1);
+
+GO
